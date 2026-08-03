@@ -456,7 +456,11 @@ async function openMyCollection() {
       <div class="list-item" data-figure-id="${i.figure_id}">
         <div class="list-item-main">
           <div class="list-item-name">${i.figure_name}</div>
-          <div class="list-item-sub">${i.alert_threshold != null ? "alert at $" + i.alert_threshold.toFixed(0) : "no alert set"} ${i.below_threshold ? '<span class="below-threshold-tag">● at/below target</span>' : ""}</div>
+          <div class="list-item-sub">
+            ${i.alert_threshold != null ? "alert at $" + i.alert_threshold.toFixed(0) : "no alert set"}
+            <span class="profile-link" data-action="edit-alert" data-figure-id="${i.figure_id}" data-threshold="${i.alert_threshold != null ? i.alert_threshold : ""}">edit</span>
+            ${i.below_threshold ? '<span class="below-threshold-tag">● at/below target</span>' : ""}
+          </div>
         </div>
         <span class="list-item-price">${i.current_price != null ? "$" + i.current_price.toFixed(0) : "—"}</span>
         <button class="remove-btn" data-action="remove-wishlist" data-figure-id="${i.figure_id}">Remove</button>
@@ -563,6 +567,29 @@ async function openMyCollection() {
           condition: next.trim() || null,
           photo_url: el.dataset.photo || null,
         }),
+      });
+      openMyCollection();
+    })
+  );
+  detailContent.querySelectorAll('[data-action="edit-alert"]').forEach((el) =>
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const raw = prompt("Alert me when the price drops to or below ($, blank to clear):", el.dataset.threshold);
+      if (raw === null) return;
+      const trimmed = raw.trim();
+      let threshold = null;
+      if (trimmed) {
+        const parsed = Number(trimmed);
+        if (!Number.isFinite(parsed) || parsed < 0) {
+          alert("Enter a valid non-negative number, or leave blank to clear the alert.");
+          return;
+        }
+        threshold = parsed;
+      }
+      await apiFetch("/api/wishlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ figure_id: el.dataset.figureId, alert_threshold: threshold }),
       });
       openMyCollection();
     })

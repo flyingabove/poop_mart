@@ -50,3 +50,27 @@ def test_remove_wishlist_item(client):
 
     items = client.get("/api/wishlist", headers=headers).json()["items"]
     assert items == []
+
+
+def test_editing_alert_threshold_updates_not_duplicates(client):
+    # PRICE_TRACKING_DESIGN.md documents alert_threshold as a first-class
+    # WishlistItem field; posting again for the same figure is how it's
+    # edited (upsert), not a second entry.
+    headers = _auth_headers(client, "wisher5@example.com")
+    client.post("/api/wishlist", json={"figure_id": "lm-vanilla", "alert_threshold": 100}, headers=headers)
+    client.post("/api/wishlist", json={"figure_id": "lm-vanilla", "alert_threshold": 50}, headers=headers)
+
+    items = client.get("/api/wishlist", headers=headers).json()["items"]
+    matching = [i for i in items if i["figure_id"] == "lm-vanilla"]
+    assert len(matching) == 1
+    assert matching[0]["alert_threshold"] == 50
+
+
+def test_clearing_alert_threshold(client):
+    headers = _auth_headers(client, "wisher6@example.com")
+    client.post("/api/wishlist", json={"figure_id": "lm-vanilla", "alert_threshold": 100}, headers=headers)
+    client.post("/api/wishlist", json={"figure_id": "lm-vanilla", "alert_threshold": None}, headers=headers)
+
+    items = client.get("/api/wishlist", headers=headers).json()["items"]
+    item = next(i for i in items if i["figure_id"] == "lm-vanilla")
+    assert item["alert_threshold"] is None
