@@ -1128,17 +1128,33 @@ function starsHtml(rating) {
 function priceChartSvg(history) {
   if (!history.length) return "";
   const w = 600, h = 80, pad = 4;
-  const prices = history.map((p) => p.median_price);
-  const min = Math.min(...prices), max = Math.max(...prices);
+  // Per PRICE_TRACKING_DESIGN.md, price is an aggregate with a confidence
+  // band (low/high), not a single point value -- the chart previously only
+  // ever plotted median_price and ignored low_price/high_price entirely.
+  const hasBand = history.every((p) => p.low_price != null && p.high_price != null);
+  const allValues = hasBand
+    ? history.flatMap((p) => [p.low_price, p.high_price])
+    : history.map((p) => p.median_price);
+  const min = Math.min(...allValues), max = Math.max(...allValues);
   const range = max - min || 1;
-  const pts = history.map((p, i) => {
-    const x = pad + (i / (history.length - 1 || 1)) * (w - pad * 2);
-    const y = h - pad - ((p.median_price - min) / range) * (h - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  });
+  const xFor = (i) => pad + (i / (history.length - 1 || 1)) * (w - pad * 2);
+  const yFor = (v) => h - pad - ((v - min) / range) * (h - pad * 2);
+
+  const medianPts = history.map((p, i) => `${xFor(i).toFixed(1)},${yFor(p.median_price).toFixed(1)}`);
+
+  let bandHtml = "";
+  if (hasBand) {
+    const topPts = history.map((p, i) => `${xFor(i).toFixed(1)},${yFor(p.high_price).toFixed(1)}`);
+    const bottomPts = history
+      .map((p, i) => `${xFor(i).toFixed(1)},${yFor(p.low_price).toFixed(1)}`)
+      .reverse();
+    bandHtml = `<polygon points="${topPts.join(" ")} ${bottomPts.join(" ")}" fill="#ff5da2" fill-opacity="0.12" stroke="none" />`;
+  }
+
   const up = history[history.length - 1].median_price >= history[0].median_price;
   return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
-    <polyline points="${pts.join(" ")}" fill="none" stroke="${up ? "#35c56a" : "#e5484d"}" stroke-width="2.5" />
+    ${bandHtml}
+    <polyline points="${medianPts.join(" ")}" fill="none" stroke="${up ? "#35c56a" : "#e5484d"}" stroke-width="2.5" />
   </svg>`;
 }
 
@@ -1165,6 +1181,7 @@ async function openFigure(figureId) {
     ? `<div class="price-box">
          <h2>Resale Price</h2>
          <div class="price-now">$${current.median_price.toFixed(0)} ${deltaHtml}</div>
+         ${current.listing_count != null ? `<div class="sig-detail">Based on ${current.listing_count} listing${current.listing_count === 1 ? "" : "s"}${current.listing_count < 10 ? " — low confidence" : ""}</div>` : ""}
          ${priceChartSvg(history)}
        </div>`
     : `<div class="price-box"><h2>Resale Price</h2><div class="sig-detail">Not enough listings tracked yet.</div></div>`;
