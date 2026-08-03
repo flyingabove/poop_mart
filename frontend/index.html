@@ -200,6 +200,7 @@
   .profile-link:hover { color: var(--accent); text-decoration-color: var(--accent); }
 
   #my-collection-btn { font-size: 18px; background: none !important; border: none !important; padding: 4px !important; }
+  #browse-btn { font-size: 18px; background: none !important; border: none !important; padding: 4px !important; flex: none; }
 
   .figure-action-btns { display: flex; gap: 8px; margin-top: 14px; }
   .action-btn {
@@ -259,6 +260,7 @@
     <input id="search" type="search" placeholder="Search Labubu, Crybaby, Skullpanda…" autocomplete="off" />
     <div id="search-results"></div>
   </div>
+  <button id="browse-btn" title="Browse all series">🗂️</button>
   <div id="auth-area"></div>
 </header>
 
@@ -1009,6 +1011,49 @@ document.getElementById("back-btn").addEventListener("click", () => {
   detailScreen.classList.remove("open");
   feedScreen.classList.remove("hidden");
 });
+
+document.getElementById("browse-btn").addEventListener("click", openBrowseSeries);
+
+/* ---------------- Browse all series ---------------- */
+
+async function openBrowseSeries() {
+  const [seriesRes, figuresRes] = await Promise.all([fetch("/api/series"), fetch("/api/figures")]);
+  const series = (await seriesRes.json()).series;
+  const figures = (await figuresRes.json()).figures;
+
+  const countBySeriesId = {};
+  figures.forEach((f) => {
+    countBySeriesId[f.series_id] = (countBySeriesId[f.series_id] || 0) + 1;
+  });
+
+  const seriesHtml = series.length
+    ? series
+        .map(
+          (s) => `
+      <div class="list-item" data-series-id="${s.id}">
+        <div class="list-item-main">
+          <div class="list-item-name">${s.name}</div>
+          <div class="list-item-sub">${s.brand_line} · ${countBySeriesId[s.id] || 0} figures</div>
+        </div>
+      </div>`
+        )
+        .join("")
+    : `<div class="sig-detail">No series in the catalog yet.</div>`;
+
+  showDetail(`
+    <div class="detail-header">
+      <h1>Browse All Series</h1>
+      <div class="sub">${series.length} series in the catalog</div>
+    </div>
+    <div class="guide-box">
+      ${seriesHtml}
+    </div>
+  `);
+
+  document.getElementById("detail-content").querySelectorAll(".list-item").forEach((el) =>
+    el.addEventListener("click", () => openSeries(el.dataset.seriesId))
+  );
+}
 
 function starsHtml(rating) {
   const full = Math.round(rating);
