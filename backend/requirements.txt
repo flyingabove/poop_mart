@@ -1,3 +1,8 @@
-# Backend dependencies — add as needed, e.g.:
-# fastapi
-# uvicorn[standard]
+fastapi
+uvicorn[standard]
+pydantic
+httpx
+
+# --- Testing (also needed at Docker build time, see Dockerfile test gate) ---
+pytest
+pytest-asyncio

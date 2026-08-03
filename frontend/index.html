@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PoopMart</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<meta name="description" content="One feed for the Pop Mart collector world — trending figures, prices, and Shake Guides." />
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:         #121212;
+    --surface:    #1a1a1a;
+    --card:       #1f1f1f;
+    --card-hover: #262626;
+    --border:     #2b2b2b;
+    --accent:     #ff5da2;
+    --accent-dim: #7a2f52;
+    --text:       #f2f2f2;
+    --text-sub:   #a8a8a8;
+    --text-muted: #6b6b6b;
+    --good:       #35c56a;
+    --bad:        #e5484d;
+    --radius:     14px;
+    --radius-sm:  8px;
+    --font:       -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; }
+  body { display: flex; flex-direction: column; }
+
+  /* ---------------- Top bar ---------------- */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .logo { font-weight: 800; font-size: 18px; letter-spacing: -0.02em; white-space: nowrap; }
+  .logo span { color: var(--accent); }
+  #search {
+    flex: 1; background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 999px; padding: 8px 14px; font-size: 14px; outline: none;
+  }
+  #search:focus { border-color: var(--accent); }
+  #search-results {
+    position: absolute; top: 54px; left: 16px; right: 16px; background: var(--card);
+    border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; z-index: 20; display: none;
+  }
+  #search-results.open { display: block; }
+  .search-hit { padding: 10px 14px; cursor: pointer; font-size: 14px; border-bottom: 1px solid var(--border); }
+  .search-hit:last-child { border-bottom: none; }
+  .search-hit:hover { background: var(--card-hover); }
+  .search-hit small { color: var(--text-muted); margin-left: 6px; }
+
+  /* ---------------- Tabs ---------------- */
+  #tabs {
+    display: flex; gap: 4px; overflow-x: auto; padding: 8px 12px; background: var(--surface);
+    border-bottom: 1px solid var(--border); scrollbar-width: none;
+  }
+  #tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    flex: none; padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 600;
+    color: var(--text-sub); cursor: pointer; white-space: nowrap; border: 1px solid transparent;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--accent-dim); color: #fff; border-color: var(--accent); }
+
+  /* ---------------- Feed ---------------- */
+  main { flex: 1; overflow-y: auto; padding: 14px; max-width: 640px; width: 100%; margin: 0 auto; }
+  #feed { display: flex; flex-direction: column; gap: 10px; }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px; cursor: pointer; transition: background 0.12s;
+  }
+  .card:hover { background: var(--card-hover); }
+  .card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .card-icon { font-size: 16px; }
+  .card-type-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); font-weight: 700; }
+  .card-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+  .card-body { font-size: 13.5px; color: var(--text-sub); line-height: 1.45; }
+  .card-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; font-size: 11.5px; color: var(--text-muted); }
+  .chip { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
+  .chip.trust-official { color: var(--good); border-color: var(--good); }
+  .chip.trust-unverified { color: var(--bad); border-color: var(--bad); }
+
+  #empty { text-align: center; color: var(--text-muted); padding: 40px 0; font-size: 14px; }
+
+  /* ---------------- Detail screen ---------------- */
+  #detail { display: none; }
+  #detail.open { display: block; }
+  #feed-screen.hidden { display: none; }
+
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 6px; color: var(--text-sub);
+    cursor: pointer; font-size: 13px; margin-bottom: 14px;
+  }
+  .back-btn:hover { color: var(--text); }
+
+  .detail-header h1 { font-size: 22px; margin-bottom: 4px; }
+  .detail-header .sub { color: var(--text-sub); font-size: 13px; margin-bottom: 16px; }
+
+  .price-box, .guide-box {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px; margin-bottom: 16px;
+  }
+  .price-box h2, .guide-box h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-sub); margin-bottom: 10px; }
+  .price-now { font-size: 28px; font-weight: 800; margin-bottom: 10px; }
+  .price-now .delta.up { color: var(--good); font-size: 14px; margin-left: 8px; }
+  .price-now .delta.down { color: var(--bad); font-size: 14px; margin-left: 8px; }
+  svg.chart { width: 100%; height: 80px; display: block; }
+
+  .etiquette { font-size: 12.5px; color: var(--text-muted); background: var(--surface); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 14px; }
+  .signature { border-top: 1px solid var(--border); padding: 12px 0; }
+  .signature:first-of-type { border-top: none; }
+  .sig-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .sig-name { font-weight: 700; font-size: 14px; }
+  .sig-conf { font-size: 12px; color: var(--text-muted); }
+  .conf-bar { height: 5px; border-radius: 3px; background: var(--surface); overflow: hidden; margin-bottom: 6px; }
+  .conf-bar-fill { height: 100%; background: var(--accent); }
+  .sig-detail { font-size: 12.5px; color: var(--text-sub); }
+
+  .contrib-form { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+  .contrib-form label { display: block; font-size: 12px; color: var(--text-sub); margin: 8px 0 4px; }
+  .contrib-form select, .contrib-form input, .contrib-form textarea {
+    width: 100%; background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    border-radius: var(--radius-sm); padding: 8px 10px; font-size: 13px; font-family: var(--font);
+  }
+  .contrib-form button {
+    margin-top: 12px; background: var(--accent); color: #1a0a12; border: none; font-weight: 700;
+    padding: 9px 16px; border-radius: 999px; cursor: pointer; font-size: 13px;
+  }
+  .contrib-form button:hover { opacity: 0.9; }
+  .form-note { font-size: 11.5px; color: var(--good); margin-top: 8px; display: none; }
+  .form-note.show { display: block; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🐷 Poop<span>Mart</span></div>
+  <div style="position:relative; flex:1;">
+    <input id="search" type="search" placeholder="Search Labubu, Crybaby, Skullpanda…" autocomplete="off" />
+    <div id="search-results"></div>
+  </div>
+</header>
+
+<div id="tabs"></div>
+
+<main>
+  <div id="feed-screen">
+    <div id="feed"></div>
+    <div id="empty" style="display:none;">Nothing here yet.</div>
+  </div>
+
+  <div id="detail">
+    <div class="back-btn" id="back-btn">&larr; Back to feed</div>
+    <div id="detail-content"></div>
+  </div>
+</main>
+
+<script>
+const TABS = [
+  { id: "for_you", label: "For You" },
+  { id: "trending", label: "Trending" },
+  { id: "news", label: "News" },
+  { id: "videos", label: "Videos" },
+  { id: "collections", label: "Collections" },
+  { id: "guides", label: "Guides" },
+  { id: "marketplace", label: "Marketplace" },
+];
+
+const CARD_ICON = {
+  trending: "📈", new_drop: "🆕", video: "🎥", community_post: "📷",
+  price_change: "💰", whats_hot: "🔥", leak: "🕵️", review: "⭐",
+  regional_news: "🌎", shake_guide: "🎲",
+};
+
+const CARD_LABEL = {
+  trending: "Trending", new_drop: "New Drop", video: "Video", community_post: "Community",
+  price_change: "Price Change", whats_hot: "What's Hot", leak: "Leak", review: "Review",
+  regional_news: "Regional News", shake_guide: "Shake Guide",
+};
+
+let currentTab = "for_you";
+
+const feedScreen = document.getElementById("feed-screen");
+const detailScreen = document.getElementById("detail");
+const feedEl = document.getElementById("feed");
+const emptyEl = document.getElementById("empty");
+const tabsEl = document.getElementById("tabs");
+
+function renderTabs() {
+  tabsEl.innerHTML = TABS.map(
+    (t) => `<div class="tab ${t.id === currentTab ? "active" : ""}" data-tab="${t.id}">${t.label}</div>`
+  ).join("");
+  tabsEl.querySelectorAll(".tab").forEach((el) =>
+    el.addEventListener("click", () => {
+      currentTab = el.dataset.tab;
+      renderTabs();
+      loadFeed();
+    })
+  );
+}
+
+function timeAgo(unixSeconds) {
+  const diff = Math.max(0, Date.now() / 1000 - unixSeconds);
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  return Math.floor(diff / 86400) + "d ago";
+}
+
+function cardHtml(card) {
+  const icon = CARD_ICON[card.card_type] || "•";
+  const label = CARD_LABEL[card.card_type] || card.card_type;
+  const meta = [];
+  if (card.region) meta.push(`<span class="chip">${card.region}</span>`);
+  if (card.sentiment_score != null) meta.push(`<span class="chip">Sentiment ${Math.round(card.sentiment_score * 100)}%</span>`);
+  if (card.source_counts) {
+    const sc = card.source_counts;
+    const parts = [];
+    if (sc.videos) parts.push(`🎥${sc.videos}`);
+    if (sc.news) parts.push(`📰${sc.news}`);
+    if (sc.discussions) parts.push(`💬${sc.discussions}`);
+    if (parts.length) meta.push(`<span class="chip">${parts.join(" ")}</span>`);
+  }
+  meta.push(`<span class="chip trust-${card.source_trust_tier}">${card.source_trust_tier.replace("_", " ")}</span>`);
+  meta.push(`<span class="chip">${timeAgo(card.created_at)}</span>`);
+
+  return `
+    <div class="card" data-figure-id="${card.figure_id || ""}" data-series-id="${card.series_id || ""}">
+      <div class="card-top"><span class="card-icon">${icon}</span><span class="card-type-label">${label}</span></div>
+      <div class="card-title">${card.title}</div>
+      <div class="card-body">${card.body}</div>
+      <div class="card-meta">${meta.join("")}</div>
+    </div>`;
+}
+
+async function loadFeed() {
+  feedEl.innerHTML = "";
+  const res = await fetch(`/api/feed?tab=${currentTab}`);
+  const data = await res.json();
+  emptyEl.style.display = data.cards.length ? "none" : "block";
+  feedEl.innerHTML = data.cards.map(cardHtml).join("");
+  feedEl.querySelectorAll(".card").forEach((el) =>
+    el.addEventListener("click", () => {
+      const figureId = el.dataset.figureId;
+      const seriesId = el.dataset.seriesId;
+      if (figureId) openFigure(figureId);
+      else if (seriesId) openSeries(seriesId);
+    })
+  );
+}
+
+/* ---------------- Detail screen ---------------- */
+
+function showDetail(html) {
+  document.getElementById("detail-content").innerHTML = html;
+  feedScreen.classList.add("hidden");
+  detailScreen.classList.add("open");
+  window.scrollTo(0, 0);
+}
+
+document.getElementById("back-btn").addEventListener("click", () => {
+  detailScreen.classList.remove("open");
+  feedScreen.classList.remove("hidden");
+});
+
+function priceChartSvg(history) {
+  if (!history.length) return "";
+  const w = 600, h = 80, pad = 4;
+  const prices = history.map((p) => p.median_price);
+  const min = Math.min(...prices), max = Math.max(...prices);
+  const range = max - min || 1;
+  const pts = history.map((p, i) => {
+    const x = pad + (i / (history.length - 1 || 1)) * (w - pad * 2);
+    const y = h - pad - ((p.median_price - min) / range) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const up = history[history.length - 1].median_price >= history[0].median_price;
+  return `<svg class="chart" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <polyline points="${pts.join(" ")}" fill="none" stroke="${up ? "#35c56a" : "#e5484d"}" stroke-width="2.5" />
+  </svg>`;
+}
+
+async function openFigure(figureId) {
+  const [figRes, priceRes] = await Promise.all([
+    fetch(`/api/figures/${figureId}`),
+    fetch(`/api/figures/${figureId}/price-history`),
+  ]);
+  const fig = await figRes.json();
+  const price = await priceRes.json();
+  const history = price.history;
+  const current = fig.current_price;
+  const first = history[0];
+  let deltaHtml = "";
+  if (current && first && history.length > 1) {
+    const pct = ((current.median_price - first.median_price) / first.median_price) * 100;
+    const cls = pct >= 0 ? "up" : "down";
+    deltaHtml = `<span class="delta ${cls}">${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%</span>`;
+  }
+
+  const priceBox = current
+    ? `<div class="price-box">
+         <h2>Resale Price</h2>
+         <div class="price-now">$${current.median_price.toFixed(0)} ${deltaHtml}</div>
+         ${priceChartSvg(history)}
+       </div>`
+    : `<div class="price-box"><h2>Resale Price</h2><div class="sig-detail">Not enough listings tracked yet.</div></div>`;
+
+  showDetail(`
+    <div class="detail-header">
+      <h1>${fig.figure.name}</h1>
+      <div class="sub">${fig.figure.colorway || ""} ${fig.figure.is_secret_chase ? "· 🔒 Secret" : ""}</div>
+    </div>
+    ${priceBox}
+    <div style="text-align:center;">
+      <span class="back-btn" data-series="${fig.figure.series_id}" id="view-series-link">View full series &amp; Shake Guide &rarr;</span>
+    </div>
+  `);
+  document.getElementById("view-series-link").addEventListener("click", () => openSeries(fig.figure.series_id));
+}
+
+async function openSeries(seriesId) {
+  const [seriesRes, guideRes] = await Promise.all([
+    fetch(`/api/series/${seriesId}`),
+    fetch(`/api/guides/${seriesId}`),
+  ]);
+  const seriesData = await seriesRes.json();
+  const guide = await guideRes.json();
+
+  const figuresOptions = seriesData.figures
+    .map((f) => `<option value="${f.id}">${f.name}${f.is_secret_chase ? " (secret)" : ""}</option>`)
+    .join("");
+
+  const signaturesHtml = guide.figure_signatures.length
+    ? guide.figure_signatures
+        .map(
+          (s) => `
+      <div class="signature">
+        <div class="sig-row"><span class="sig-name">${s.figure_name}</span><span class="sig-conf">${s.confidence_score}% confidence · ${s.contribution_count} contributions</span></div>
+        <div class="conf-bar"><div class="conf-bar-fill" style="width:${s.confidence_score}%"></div></div>
+        <div class="sig-detail">${s.weight_range_g ? "⚖️ " + s.weight_range_g : ""} ${s.sound_description ? " · 🔊 " + s.sound_description : ""}</div>
+      </div>`
+        )
+        .join("")
+    : `<div class="sig-detail">Not enough data yet — be the first to add a tell below.</div>`;
+
+  showDetail(`
+    <div class="detail-header">
+      <h1>${seriesData.series.name}</h1>
+      <div class="sub">${seriesData.series.brand_line} · ${seriesData.figures.length} figures</div>
+    </div>
+
+    <div class="guide-box">
+      <h2>🎲 Shake Guide</h2>
+      <div class="sig-detail" style="margin-bottom:12px;">${guide.technique_summary}</div>
+      <div class="etiquette">${guide.etiquette_note}</div>
+      ${signaturesHtml}
+
+      <form class="contrib-form" id="contrib-form">
+        <div style="font-size:13px; font-weight:700;">Add your tell</div>
+        <label>Figure</label>
+        <select name="figure_id" required>${figuresOptions}</select>
+        <label>Technique</label>
+        <select name="technique_type" required>
+          <option value="weight">⚖️ Weight</option>
+          <option value="sound">🔊 Sound / Rattle</option>
+          <option value="box_code">🔢 Box Code</option>
+          <option value="seam">✂️ Seam / Sticker Pattern</option>
+        </select>
+        <label>What did you notice?</label>
+        <textarea name="claim_text" rows="2" required placeholder="e.g. 47g, faint rattle near the top"></textarea>
+        <label>Weight range (optional)</label>
+        <input name="weight_range_g" placeholder="e.g. 46-48g" />
+        <button type="submit">Submit</button>
+        <div class="form-note" id="contrib-note">Thanks — added to the guide.</div>
+      </form>
+    </div>
+  `);
+
+  document.getElementById("contrib-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = {
+      figure_id: fd.get("figure_id"),
+      technique_type: fd.get("technique_type"),
+      claim_text: fd.get("claim_text"),
+      weight_range_g: fd.get("weight_range_g") || null,
+    };
+    const res = await fetch(`/api/guides/${seriesId}/contributions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      document.getElementById("contrib-note").classList.add("show");
+      setTimeout(() => openSeries(seriesId), 700);
+    }
+  });
+}
+
+/* ---------------- Search ---------------- */
+
+const searchInput = document.getElementById("search");
+const searchResults = document.getElementById("search-results");
+let searchTimer = null;
+
+searchInput.addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  const q = searchInput.value.trim();
+  if (!q) {
+    searchResults.classList.remove("open");
+    return;
+  }
+  searchTimer = setTimeout(async () => {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    const hits = [
+      ...data.series.map((s) => ({ kind: "series", id: s.id, label: s.name, sub: s.brand_line })),
+      ...data.figures.map((f) => ({ kind: "figure", id: f.id, label: f.name, sub: "figure" })),
+    ];
+    if (!hits.length) {
+      searchResults.innerHTML = `<div class="search-hit">No matches for "${q}"</div>`;
+    } else {
+      searchResults.innerHTML = hits
+        .map((h) => `<div class="search-hit" data-kind="${h.kind}" data-id="${h.id}">${h.label}<small>${h.sub}</small></div>`)
+        .join("");
+    }
+    searchResults.classList.add("open");
+  }, 200);
+});
+
+searchResults.addEventListener("click", (e) => {
+  const hit = e.target.closest(".search-hit");
+  if (!hit || !hit.dataset.id) return;
+  searchResults.classList.remove("open");
+  searchInput.value = "";
+  if (hit.dataset.kind === "series") openSeries(hit.dataset.id);
+  else openFigure(hit.dataset.id);
+});
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#search") && !e.target.closest("#search-results")) {
+    searchResults.classList.remove("open");
+  }
+});
+
+/* ---------------- Init ---------------- */
+renderTabs();
+loadFeed();
+</script>
+</body>
+</html>

@@ -191,3 +191,9 @@ data/
 
 # Claude / editor local state
 .claude/settings.local.json
+
+# Local secrets
+.secrets/
+
+# Local scratch / planning (not part of the app)
+tmp_stuff/
