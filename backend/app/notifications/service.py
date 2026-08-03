@@ -3,13 +3,17 @@ In-app notification feed. See documentation/model_output_docs/NOTIFICATIONS_DESI
 
 No push infra (APNs/FCM credentials) is available, so v1 is in-app only:
 notifications are rows a client polls via GET /api/notifications, not real
-push. The one real trigger wired up so far is ingestion -> follows: when
-backend/app/ingestion/news.py inserts a genuinely new feed card (not a
-re-poll dedup), notify_followers_of_new_card() fires for anyone following
-that card's series. Wishlist price-drop alerts (the other documented
-trigger) aren't wired yet -- prices are static seed data with no live
-feed, so there's no real "price just dropped" event to hook today; revisit
-once PRICE_TRACKING_DESIGN.md's real sourcing exists.
+push. Two real triggers are wired up: (1) ingestion -> series follows --
+when backend/app/ingestion/news.py inserts a genuinely new feed card (not
+a re-poll dedup), notify_followers_of_new_card() fires for anyone
+following that card's series; (2) community posts -> user follows --
+notify_followers_of_user_post() fires when a user with followers posts a
+pull, satisfying the "social" category NOTIFICATIONS_DESIGN.md's Delivery
+Rules already names but never had an implementation for. Wishlist
+price-drop alerts (the other documented trigger) aren't wired yet --
+prices are static seed data with no live feed, so there's no real "price
+just dropped" event to hook today; revisit once PRICE_TRACKING_DESIGN.md's
+real sourcing exists.
 """
 import time
 
@@ -40,6 +44,42 @@ def notify_followers_of_new_card(card_id: str, series_id: str | None, title: str
             "(user_id, notification_type, title, body, series_id, feed_card_id, created_at) "
             "VALUES (?, 'followed_series_update', 'New update for a series you follow', ?, ?, ?, ?)",
             [(uid, title, series_id, card_id, now) for uid in follower_ids],
+        )
+        conn.commit()
+        return len(follower_ids)
+    finally:
+        conn.close()
+
+
+def notify_followers_of_user_post(poster_id: str, post_id: str, figure_id: str, series_id: str | None, post_title: str) -> int:
+    """Called right after a community post is created. Creates one
+    notification per user following the poster. No-op if nobody follows
+    them. Returns notifications created."""
+    conn = get_connection()
+    try:
+        poster = conn.execute("SELECT email FROM users WHERE id = ?", (poster_id,)).fetchone()
+        if not poster:
+            return 0
+        handle = poster["email"].split("@")[0]
+
+        follower_ids = [
+            r["follower_id"]
+            for r in conn.execute(
+                "SELECT follower_id FROM user_follows WHERE followed_id = ?", (poster_id,)
+            ).fetchall()
+        ]
+        if not follower_ids:
+            return 0
+
+        now = int(time.time())
+        conn.executemany(
+            "INSERT INTO notifications "
+            "(user_id, notification_type, title, body, figure_id, series_id, feed_card_id, created_at) "
+            "VALUES (?, 'followed_user_post', ?, ?, ?, ?, ?, ?)",
+            [
+                (uid, f"@{handle} shared a new pull", post_title, figure_id, series_id, post_id, now)
+                for uid in follower_ids
+            ],
         )
         conn.commit()
         return len(follower_ids)

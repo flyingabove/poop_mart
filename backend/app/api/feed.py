@@ -4,6 +4,7 @@ from typing import Optional
 from backend.app.auth.dependencies import get_current_user, get_optional_user
 from backend.app.feed import service as feed_service
 from backend.app.follows.service import followed_series_ids
+from backend.app.notifications.service import notify_followers_of_user_post
 
 router = APIRouter()
 
@@ -34,6 +35,8 @@ async def get_feed(
 @router.post("/feed/posts", status_code=201)
 async def post_community_post(body: CommunityPostIn, user: dict = Depends(get_current_user)):
     try:
-        return feed_service.create_community_post(user["id"], body.figure_id, body.title, body.body)
+        post = feed_service.create_community_post(user["id"], body.figure_id, body.title, body.body)
     except feed_service.FeedError as e:
         raise HTTPException(status_code=422, detail=str(e))
+    notify_followers_of_user_post(user["id"], post["id"], body.figure_id, post["series_id"], body.title)
+    return post
