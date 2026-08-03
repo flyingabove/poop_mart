@@ -195,6 +195,33 @@
   }
   .follow-btn.following { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
   .card-followed-tag { color: var(--accent); border-color: var(--accent); font-weight: 800; }
+
+  #my-collection-btn { font-size: 18px; background: none !important; border: none !important; padding: 4px !important; }
+
+  .figure-action-btns { display: flex; gap: 8px; margin-top: 14px; }
+  .action-btn {
+    flex: 1; background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 999px; padding: 9px; font-size: 12.5px; font-weight: 700; cursor: pointer; text-align: center;
+  }
+  .action-btn.active { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+
+  .list-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13.5px; cursor: pointer;
+  }
+  .list-item:last-child { border-bottom: none; }
+  .list-item-main { flex: 1; min-width: 0; }
+  .list-item-name { font-weight: 700; }
+  .list-item-sub { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+  .list-item-price { color: var(--text-sub); font-size: 13px; white-space: nowrap; }
+  .remove-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 999px; padding: 4px 10px; font-size: 11.5px; cursor: pointer; flex: none;
+  }
+  .remove-btn:hover { color: var(--bad); border-color: var(--bad); }
+  .section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-sub); margin: 20px 0 8px; font-weight: 700; }
+  .section-title:first-child { margin-top: 0; }
+  .below-threshold-tag { color: var(--good); font-weight: 800; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -312,6 +339,7 @@ function renderAuthArea() {
     return;
   }
   authAreaEl.innerHTML = `
+    <button id="my-collection-btn" title="My Collection">📦</button>
     <div id="bell-wrap">
       <button id="bell-btn">🔔<span id="bell-badge">0</span></button>
       <div id="notif-dropdown"></div>
@@ -321,7 +349,95 @@ function renderAuthArea() {
   `;
   document.getElementById("sign-out-btn").addEventListener("click", clearAuth);
   document.getElementById("bell-btn").addEventListener("click", toggleNotifDropdown);
+  document.getElementById("my-collection-btn").addEventListener("click", openMyCollection);
   refreshNotifications();
+}
+
+/* ---------------- My Collection screen ---------------- */
+
+async function openMyCollection() {
+  const [colRes, valRes, wishRes] = await Promise.all([
+    apiFetch("/api/collection"),
+    apiFetch("/api/collection/valuation"),
+    apiFetch("/api/wishlist"),
+  ]);
+  const collection = (await colRes.json()).items;
+  const valuation = await valRes.json();
+  const wishlist = (await wishRes.json()).items;
+
+  const collectionHtml = collection.length
+    ? collection
+        .map(
+          (i) => `
+      <div class="list-item" data-figure-id="${i.figure_id}">
+        <div class="list-item-main">
+          <div class="list-item-name">${i.figure_name}</div>
+          <div class="list-item-sub">${i.condition || "condition not set"}</div>
+        </div>
+        <span class="list-item-price">${i.current_price != null ? "$" + i.current_price.toFixed(0) : "—"}</span>
+        <button class="remove-btn" data-action="remove-collection" data-figure-id="${i.figure_id}">Remove</button>
+      </div>`
+        )
+        .join("")
+    : `<div class="sig-detail">Nothing in your collection yet — visit a figure page to add one.</div>`;
+
+  const wishlistHtml = wishlist.length
+    ? wishlist
+        .map(
+          (i) => `
+      <div class="list-item" data-figure-id="${i.figure_id}">
+        <div class="list-item-main">
+          <div class="list-item-name">${i.figure_name}</div>
+          <div class="list-item-sub">${i.alert_threshold != null ? "alert at $" + i.alert_threshold.toFixed(0) : "no alert set"} ${i.below_threshold ? '<span class="below-threshold-tag">● at/below target</span>' : ""}</div>
+        </div>
+        <span class="list-item-price">${i.current_price != null ? "$" + i.current_price.toFixed(0) : "—"}</span>
+        <button class="remove-btn" data-action="remove-wishlist" data-figure-id="${i.figure_id}">Remove</button>
+      </div>`
+        )
+        .join("")
+    : `<div class="sig-detail">Nothing on your wishlist yet.</div>`;
+
+  showDetail(`
+    <div class="detail-header">
+      <h1>My Collection</h1>
+      <div class="sub">${AUTH.email}</div>
+    </div>
+
+    <div class="price-box">
+      <h2>Collection Value</h2>
+      <div class="price-now">$${valuation.total_value.toFixed(0)}</div>
+      <div class="sig-detail">${valuation.priced_figure_count} of ${valuation.figure_count} figures priced</div>
+    </div>
+
+    <div class="guide-box">
+      <div class="section-title">Collection (${collection.length})</div>
+      ${collectionHtml}
+      <div class="section-title">Wishlist (${wishlist.length})</div>
+      ${wishlistHtml}
+    </div>
+  `);
+
+  const detailContent = document.getElementById("detail-content");
+  detailContent.querySelectorAll('[data-action="remove-collection"]').forEach((el) =>
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await apiFetch(`/api/collection/${el.dataset.figureId}`, { method: "DELETE" });
+      openMyCollection();
+    })
+  );
+  detailContent.querySelectorAll('[data-action="remove-wishlist"]').forEach((el) =>
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await apiFetch(`/api/wishlist/${el.dataset.figureId}`, { method: "DELETE" });
+      openMyCollection();
+    })
+  );
+  detailContent.querySelectorAll(".list-item").forEach((el) =>
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".remove-btn")) return;
+      openFigure(el.dataset.figureId);
+    })
+  );
 }
 
 /* ---------------- Notifications ---------------- */
@@ -543,17 +659,67 @@ async function openFigure(figureId) {
        </div>`
     : `<div class="price-box"><h2>Resale Price</h2><div class="sig-detail">Not enough listings tracked yet.</div></div>`;
 
+  let inCollection = false, onWishlist = false;
+  if (isLoggedIn()) {
+    const [colRes, wishRes] = await Promise.all([apiFetch("/api/collection"), apiFetch("/api/wishlist")]);
+    if (colRes.ok) inCollection = (await colRes.json()).items.some((i) => i.figure_id === figureId);
+    if (wishRes.ok) onWishlist = (await wishRes.json()).items.some((i) => i.figure_id === figureId);
+  }
+
+  const actionBtns = isLoggedIn()
+    ? `<div class="figure-action-btns">
+         <button class="action-btn ${inCollection ? "active" : ""}" id="collection-btn">${inCollection ? "✓ In Collection" : "+ Add to Collection"}</button>
+         <button class="action-btn ${onWishlist ? "active" : ""}" id="wishlist-btn">${onWishlist ? "✓ On Wishlist" : "+ Add to Wishlist"}</button>
+       </div>`
+    : `<div class="figure-action-btns">
+         <button class="action-btn" id="collection-btn">Sign in to add to collection or wishlist</button>
+       </div>`;
+
   showDetail(`
     <div class="detail-header">
       <h1>${fig.figure.name}</h1>
       <div class="sub">${fig.figure.colorway || ""} ${fig.figure.is_secret_chase ? "· 🔒 Secret" : ""}</div>
     </div>
     ${priceBox}
-    <div style="text-align:center;">
+    ${actionBtns}
+    <div style="text-align:center; margin-top:16px;">
       <span class="back-btn" data-series="${fig.figure.series_id}" id="view-series-link">View full series &amp; Shake Guide &rarr;</span>
     </div>
   `);
   document.getElementById("view-series-link").addEventListener("click", () => openSeries(fig.figure.series_id));
+
+  document.getElementById("collection-btn").addEventListener("click", async () => {
+    if (!isLoggedIn()) {
+      openAuthModal("login");
+      return;
+    }
+    if (inCollection) {
+      await apiFetch(`/api/collection/${figureId}`, { method: "DELETE" });
+    } else {
+      await apiFetch("/api/collection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ figure_id: figureId }),
+      });
+    }
+    openFigure(figureId);
+  });
+
+  const wishlistBtn = document.getElementById("wishlist-btn");
+  if (wishlistBtn) {
+    wishlistBtn.addEventListener("click", async () => {
+      if (onWishlist) {
+        await apiFetch(`/api/wishlist/${figureId}`, { method: "DELETE" });
+      } else {
+        await apiFetch("/api/wishlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ figure_id: figureId }),
+        });
+      }
+      openFigure(figureId);
+    });
+  }
 }
 
 async function openSeries(seriesId) {
