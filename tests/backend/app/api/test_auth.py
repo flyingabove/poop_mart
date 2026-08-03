@@ -57,3 +57,63 @@ def test_me_with_valid_token(client):
     r = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert r.json()["email"] == "me@example.com"
+
+
+def test_login_rate_limited_after_too_many_failed_attempts(client):
+    client.post("/api/auth/signup", json={"email": "ratelimit1@example.com", "password": "hunter22"})
+    for _ in range(5):
+        r = client.post("/api/auth/login", json={"email": "ratelimit1@example.com", "password": "wrong-pw"})
+        assert r.status_code == 401
+
+    r = client.post("/api/auth/login", json={"email": "ratelimit1@example.com", "password": "wrong-pw"})
+    assert r.status_code == 429
+
+    # even the *correct* password is now blocked -- the limiter caps
+    # attempts, it doesn't just reject bad guesses
+    r2 = client.post("/api/auth/login", json={"email": "ratelimit1@example.com", "password": "hunter22"})
+    assert r2.status_code == 429
+
+
+def test_successful_login_resets_rate_limit(client):
+    client.post("/api/auth/signup", json={"email": "ratelimit2@example.com", "password": "hunter22"})
+    for _ in range(4):
+        client.post("/api/auth/login", json={"email": "ratelimit2@example.com", "password": "wrong-pw"})
+
+    r = client.post("/api/auth/login", json={"email": "ratelimit2@example.com", "password": "hunter22"})
+    assert r.status_code == 200  # 5th attempt, still within the limit, and correct
+
+    # counter reset on success -> another login right away isn't blocked
+    r2 = client.post("/api/auth/login", json={"email": "ratelimit2@example.com", "password": "hunter22"})
+    assert r2.status_code == 200
+
+
+def test_login_rate_limit_is_per_ip_even_across_different_emails(client, monkeypatch):
+    from backend.app.api import auth as auth_module
+
+    client.post("/api/auth/signup", json={"email": "ratelimit3a@example.com", "password": "hunter22"})
+    client.post("/api/auth/signup", json={"email": "ratelimit3b@example.com", "password": "hunter22"})
+
+    monkeypatch.setattr(auth_module, "_client_ip", lambda request: "1.2.3.4")
+    for _ in range(5):
+        client.post("/api/auth/login", json={"email": "ratelimit3a@example.com", "password": "wrong-pw"})
+
+    # same simulated IP, a *different* account -- still blocked, because
+    # the IP-level cap (not just the email-level one) is exhausted too
+    r = client.post("/api/auth/login", json={"email": "ratelimit3b@example.com", "password": "hunter22"})
+    assert r.status_code == 429
+
+    # a genuinely different source IP for that second account isn't
+    # affected by the first IP's exhausted attempts -- proves the email
+    # key and IP key are tracked independently, not conflated
+    monkeypatch.setattr(auth_module, "_client_ip", lambda request: "5.6.7.8")
+    r2 = client.post("/api/auth/login", json={"email": "ratelimit3b@example.com", "password": "hunter22"})
+    assert r2.status_code == 200
+
+
+def test_signup_rate_limited_after_too_many_attempts(client):
+    for i in range(10):
+        r = client.post("/api/auth/signup", json={"email": f"burst{i}@example.com", "password": "hunter22"})
+        assert r.status_code == 201
+
+    r = client.post("/api/auth/signup", json={"email": "burst-over-limit@example.com", "password": "hunter22"})
+    assert r.status_code == 429
