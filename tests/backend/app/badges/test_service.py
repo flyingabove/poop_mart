@@ -153,3 +153,110 @@ def test_top_reviewer_net_helpful_subtracts_unhelpful_votes(isolated_db, monkeyp
 
     # Net helpful = 1 - 1 = 0, below the minimum of 1.
     assert "top_reviewer" not in [b["code"] for b in badges_service.get_badges("mixed_votes")]
+
+
+def _make_guide(conn) -> str:
+    conn.execute(
+        "INSERT INTO shake_guides (id, series_id, technique_summary, created_at) "
+        "VALUES ('g1', 's1', 'summary', 1000)"
+    )
+    return "g1"
+
+
+def _make_contribution(conn, contrib_id: int, guide_id: str, user_id: str, created_at: int, upvotes: int = 0, downvotes: int = 0) -> None:
+    conn.execute(
+        "INSERT INTO guide_contributions (id, guide_id, technique_type, claim_text, upvotes, downvotes, user_id, created_at) "
+        "VALUES (?, ?, 'weight', 'claim', ?, ?, ?, ?)",
+        (contrib_id, guide_id, upvotes, downvotes, user_id, created_at),
+    )
+
+
+def _contrib_vote(conn, voter_id: str, contribution_id: int, direction: str) -> None:
+    conn.execute(
+        "INSERT INTO contribution_votes (user_id, contribution_id, direction, created_at) VALUES (?, ?, ?, 1000)",
+        (voter_id, contribution_id, direction),
+    )
+
+
+def test_guide_contributor_requires_volume_and_net_votes(isolated_db, monkeypatch):
+    monkeypatch.setattr(badges_service, "GUIDE_CONTRIBUTOR_THRESHOLD", 3)
+    monkeypatch.setattr(badges_service, "GUIDE_CONTRIBUTOR_MIN_NET_VOTES", 1)
+
+    conn = db_module.get_connection()
+    _make_user(conn, "prolific_but_unvoted", 100)
+    _make_user(conn, "prolific_and_voted", 200)
+    _make_user(conn, "voter", 300)
+    guide_id = _make_guide(conn)
+
+    for i in range(3):
+        _make_contribution(conn, i + 1, guide_id, "prolific_but_unvoted", 100)
+    for i in range(3):
+        _make_contribution(conn, i + 10, guide_id, "prolific_and_voted", 200)
+    _contrib_vote(conn, "voter", 10, "up")
+    conn.commit()
+    conn.close()
+
+    # 3 contributions, zero votes -- volume alone is not enough anymore.
+    assert "guide_contributor" not in [b["code"] for b in badges_service.get_badges("prolific_but_unvoted")]
+    # 3 contributions and one net-up vote -- both conditions met.
+    assert "guide_contributor" in [b["code"] for b in badges_service.get_badges("prolific_and_voted")]
+
+
+def test_guide_contributor_counts_seed_baseline_votes_too(isolated_db, monkeypatch):
+    monkeypatch.setattr(badges_service, "GUIDE_CONTRIBUTOR_THRESHOLD", 3)
+    monkeypatch.setattr(badges_service, "GUIDE_CONTRIBUTOR_MIN_NET_VOTES", 1)
+
+    conn = db_module.get_connection()
+    _make_user(conn, "seed_era_style", 100)
+    guide_id = _make_guide(conn)
+    # No real contribution_votes rows at all -- net votes come purely from
+    # the seed-era baseline upvotes/downvotes columns, same as
+    # guide_contributions has always supported for pre-auth contributions.
+    _make_contribution(conn, 1, guide_id, "seed_era_style", 100, upvotes=5, downvotes=0)
+    _make_contribution(conn, 2, guide_id, "seed_era_style", 100)
+    _make_contribution(conn, 3, guide_id, "seed_era_style", 100)
+    conn.commit()
+    conn.close()
+
+    assert "guide_contributor" in [b["code"] for b in badges_service.get_badges("seed_era_style")]
+
+
+def test_guide_contributor_not_granted_below_volume_threshold_even_with_votes(isolated_db, monkeypatch):
+    monkeypatch.setattr(badges_service, "GUIDE_CONTRIBUTOR_THRESHOLD", 3)
+    monkeypatch.setattr(badges_service, "GUIDE_CONTRIBUTOR_MIN_NET_VOTES", 1)
+
+    conn = db_module.get_connection()
+    _make_user(conn, "well_voted_but_light", 100)
+    _make_user(conn, "voter_a", 300)
+    _make_user(conn, "voter_b", 400)
+    guide_id = _make_guide(conn)
+
+    _make_contribution(conn, 1, guide_id, "well_voted_but_light", 100)
+    _make_contribution(conn, 2, guide_id, "well_voted_but_light", 100)
+    _contrib_vote(conn, "voter_a", 1, "up")
+    _contrib_vote(conn, "voter_b", 2, "up")
+    conn.commit()
+    conn.close()
+
+    # Only 2 contributions (threshold is 3), despite plenty of net votes.
+    assert "guide_contributor" not in [b["code"] for b in badges_service.get_badges("well_voted_but_light")]
+
+
+def test_guide_contributor_net_votes_subtracts_downvotes(isolated_db, monkeypatch):
+    monkeypatch.setattr(badges_service, "GUIDE_CONTRIBUTOR_THRESHOLD", 1)
+    monkeypatch.setattr(badges_service, "GUIDE_CONTRIBUTOR_MIN_NET_VOTES", 1)
+
+    conn = db_module.get_connection()
+    _make_user(conn, "mixed_votes", 100)
+    _make_user(conn, "voter_a", 200)
+    _make_user(conn, "voter_b", 300)
+    guide_id = _make_guide(conn)
+
+    _make_contribution(conn, 1, guide_id, "mixed_votes", 100)
+    _contrib_vote(conn, "voter_a", 1, "up")
+    _contrib_vote(conn, "voter_b", 1, "down")
+    conn.commit()
+    conn.close()
+
+    # Net = 1 - 1 = 0, below the minimum of 1.
+    assert "guide_contributor" not in [b["code"] for b in badges_service.get_badges("mixed_votes")]

@@ -70,11 +70,23 @@ def test_new_user_has_no_guide_contributor_or_top_reviewer_badge(client):
     assert "top_reviewer" not in codes
 
 
-def test_guide_contributor_badge_after_threshold_contributions(client):
+def test_guide_contributor_badge_after_threshold_contributions_and_a_vote(client):
+    # Guide Contributor requires contribution volume AND net votes (see
+    # badges/service.py) -- volume alone used to be enough, but that was a
+    # known-incomplete reading of USER_PROFILES_AND_SOCIAL_DESIGN.md, fixed
+    # at iteration 35 (same gap, same fix as Top Reviewer at iteration 31).
+    # Volume with zero votes is covered precisely by the isolated-DB tests
+    # in tests/backend/app/badges/test_service.py; this one exercises the
+    # real API end-to-end including the vote.
     signup = client.post("/api/auth/signup", json={"email": "badge-contrib@example.com", "password": "hunter22"})
     headers = {"Authorization": f"Bearer {signup.json()['access_token']}"}
+    voter_signup = client.post(
+        "/api/auth/signup", json={"email": "badge-contrib-voter@example.com", "password": "hunter22"}
+    )
+    voter_headers = {"Authorization": f"Bearer {voter_signup.json()['access_token']}"}
 
     figures = ["lfp-forest-ranger", "lfp-berry-picker", "lfp-mushroom-nap"]
+    contribution_id = None
     for figure_id in figures:
         r = client.post(
             "/api/guides/labubu-forest-party/contributions",
@@ -82,6 +94,10 @@ def test_guide_contributor_badge_after_threshold_contributions(client):
             headers=headers,
         )
         assert r.status_code == 201
+        if contribution_id is None:
+            contribution_id = r.json()["id"]
+
+    client.post(f"/api/guides/contributions/{contribution_id}/vote", json={"direction": "up"}, headers=voter_headers)
 
     badges = client.get("/api/auth/me", headers=headers).json()["badges"]
     contributor_badge = next((b for b in badges if b["code"] == "guide_contributor"), None)
