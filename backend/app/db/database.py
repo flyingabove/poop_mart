@@ -144,6 +144,18 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS reviews (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL REFERENCES users(id),
+    figure_id   TEXT NOT NULL REFERENCES figures(id),
+    rating      INTEGER NOT NULL,
+    text        TEXT,
+    created_at  INTEGER NOT NULL,
+    UNIQUE(user_id, figure_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviews_figure ON reviews(figure_id);
 """
 
 

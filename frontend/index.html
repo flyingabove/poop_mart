@@ -222,6 +222,18 @@
   .section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-sub); margin: 20px 0 8px; font-weight: 700; }
   .section-title:first-child { margin-top: 0; }
   .below-threshold-tag { color: var(--good); font-weight: 800; font-size: 11px; }
+
+  .review-item { border-top: 1px solid var(--border); padding: 12px 0; }
+  .review-item:first-of-type { border-top: none; }
+  .review-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .review-stars { color: var(--accent); font-size: 14px; letter-spacing: 1px; }
+  .review-author { color: var(--text-muted); font-size: 12px; }
+  .review-text { font-size: 13px; color: var(--text-sub); line-height: 1.4; margin-bottom: 2px; }
+  .rating-summary { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .rating-summary .review-stars { font-size: 17px; }
+  .rating-count { color: var(--text-muted); font-size: 12.5px; }
+  .star-picker { font-size: 24px; letter-spacing: 4px; margin: 6px 0; color: var(--accent); }
+  .star-pick { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -617,6 +629,11 @@ document.getElementById("back-btn").addEventListener("click", () => {
   feedScreen.classList.remove("hidden");
 });
 
+function starsHtml(rating) {
+  const full = Math.round(rating);
+  return "★".repeat(full) + "☆".repeat(5 - full);
+}
+
 function priceChartSvg(history) {
   if (!history.length) return "";
   const w = 600, h = 80, pad = 4;
@@ -635,12 +652,14 @@ function priceChartSvg(history) {
 }
 
 async function openFigure(figureId) {
-  const [figRes, priceRes] = await Promise.all([
+  const [figRes, priceRes, reviewsRes] = await Promise.all([
     fetch(`/api/figures/${figureId}`),
     fetch(`/api/figures/${figureId}/price-history`),
+    apiFetch(`/api/figures/${figureId}/reviews`),
   ]);
   const fig = await figRes.json();
   const price = await priceRes.json();
+  const reviewsData = await reviewsRes.json();
   const history = price.history;
   const current = fig.current_price;
   const first = history[0];
@@ -675,6 +694,41 @@ async function openFigure(figureId) {
          <button class="action-btn" id="collection-btn">Sign in to add to collection or wishlist</button>
        </div>`;
 
+  const ratingSummaryHtml = reviewsData.review_count > 0
+    ? `<div class="rating-summary">
+         <span class="review-stars">${starsHtml(reviewsData.average_rating)}</span>
+         <span>${reviewsData.average_rating.toFixed(1)}</span>
+         <span class="rating-count">(${reviewsData.review_count} review${reviewsData.review_count === 1 ? "" : "s"})</span>
+       </div>`
+    : `<div class="sig-detail" style="margin-bottom:12px;">No reviews yet.</div>`;
+
+  const reviewsListHtml = reviewsData.reviews.length
+    ? reviewsData.reviews
+        .map(
+          (r) => `
+      <div class="review-item">
+        <div class="review-top"><span class="review-stars">${starsHtml(r.rating)}</span><span class="review-author">@${r.reviewer}</span></div>
+        ${r.text ? `<div class="review-text">${r.text}</div>` : ""}
+        <div class="list-item-sub">${timeAgo(r.created_at)}</div>
+      </div>`
+        )
+        .join("")
+    : "";
+
+  const myRating = reviewsData.my_review ? reviewsData.my_review.rating : 0;
+  const reviewFormHtml = isLoggedIn()
+    ? `<form class="contrib-form" id="review-form">
+         <div style="font-size:13px; font-weight:700;">${reviewsData.my_review ? "Update your review" : "Write a review"}</div>
+         <div class="star-picker" id="star-picker">
+           ${[1, 2, 3, 4, 5].map((n) => `<span class="star-pick" data-value="${n}">${n <= myRating ? "★" : "☆"}</span>`).join("")}
+         </div>
+         <input type="hidden" name="rating" value="${myRating}" />
+         <textarea name="text" rows="2" placeholder="What do you think of this figure?">${(reviewsData.my_review && reviewsData.my_review.text) || ""}</textarea>
+         <button type="submit">Submit review</button>
+         <div class="form-note" id="review-note">Saved.</div>
+       </form>`
+    : `<div class="sig-detail">Sign in to leave a review.</div>`;
+
   showDetail(`
     <div class="detail-header">
       <h1>${fig.figure.name}</h1>
@@ -682,11 +736,46 @@ async function openFigure(figureId) {
     </div>
     ${priceBox}
     ${actionBtns}
+    <div class="guide-box" style="margin-top:16px;">
+      <h2>⭐ Reviews</h2>
+      ${ratingSummaryHtml}
+      ${reviewsListHtml}
+      ${reviewFormHtml}
+    </div>
     <div style="text-align:center; margin-top:16px;">
       <span class="back-btn" data-series="${fig.figure.series_id}" id="view-series-link">View full series &amp; Shake Guide &rarr;</span>
     </div>
   `);
   document.getElementById("view-series-link").addEventListener("click", () => openSeries(fig.figure.series_id));
+
+  const reviewForm = document.getElementById("review-form");
+  if (reviewForm) {
+    const starPicker = document.getElementById("star-picker");
+    starPicker.querySelectorAll(".star-pick").forEach((el) => {
+      el.addEventListener("click", () => {
+        const val = parseInt(el.dataset.value, 10);
+        reviewForm.querySelector('[name="rating"]').value = val;
+        starPicker.querySelectorAll(".star-pick").forEach((s) => {
+          s.textContent = parseInt(s.dataset.value, 10) <= val ? "★" : "☆";
+        });
+      });
+    });
+    reviewForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(reviewForm);
+      const rating = parseInt(fd.get("rating"), 10);
+      if (!rating) return;
+      const res = await apiFetch(`/api/figures/${figureId}/reviews`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating, text: fd.get("text") || null }),
+      });
+      if (res.ok) {
+        document.getElementById("review-note").classList.add("show");
+        setTimeout(() => openFigure(figureId), 700);
+      }
+    });
+  }
 
   document.getElementById("collection-btn").addEventListener("click", async () => {
     if (!isLoggedIn()) {
