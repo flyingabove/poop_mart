@@ -1,0 +1,3 @@
+# Backend dependencies — add as needed, e.g.:
+# fastapi
+# uvicorn[standard]
