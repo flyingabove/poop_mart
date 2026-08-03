@@ -154,6 +154,64 @@ def test_my_vote_reflected_in_guide_response(client):
     assert anon_mine["my_vote"] is None
 
 
+def test_remove_own_contribution(client):
+    headers = _auth_headers(client, "remover1@example.com")
+    r = client.post(
+        "/api/guides/labubu-forest-party/contributions",
+        json={"figure_id": "lfp-pinecone-guard", "technique_type": "weight", "claim_text": "48g on my scale"},
+        headers=headers,
+    )
+    contribution_id = r.json()["id"]
+
+    r2 = client.delete(f"/api/guides/contributions/{contribution_id}", headers=headers)
+    assert r2.status_code == 200
+
+    data = client.get("/api/guides/labubu-forest-party").json()
+    assert not any(c["id"] == contribution_id for c in data["contributions"])
+
+
+def test_remove_contribution_requires_auth(client):
+    contribution_id = _first_contribution_id(client)
+    r = client.delete(f"/api/guides/contributions/{contribution_id}")
+    assert r.status_code == 401
+
+
+def test_cannot_remove_other_users_contribution(client):
+    headers_a = _auth_headers(client, "remover2a@example.com")
+    headers_b = _auth_headers(client, "remover2b@example.com")
+    r = client.post(
+        "/api/guides/labubu-forest-party/contributions",
+        json={"figure_id": "lfp-pinecone-guard", "technique_type": "sound", "claim_text": "click sound"},
+        headers=headers_a,
+    )
+    contribution_id = r.json()["id"]
+
+    r2 = client.delete(f"/api/guides/contributions/{contribution_id}", headers=headers_b)
+    assert r2.status_code == 404
+
+    # still there for the actual owner
+    data = client.get("/api/guides/labubu-forest-party").json()
+    assert any(c["id"] == contribution_id for c in data["contributions"])
+
+
+def test_cannot_remove_seeded_contribution(client):
+    # Seed-era contributions have no user_id -- nobody is authenticated as
+    # their author, so they can never be removed via this route. Find one
+    # by contributor == None explicitly rather than assuming list order,
+    # since other tests in this shared-DB suite add newer contributions.
+    data = client.get("/api/guides/labubu-forest-party").json()
+    seeded = next(c for c in data["contributions"] if c["contributor"] is None)
+    headers = _auth_headers(client, "remover3@example.com")
+    r = client.delete(f"/api/guides/contributions/{seeded['id']}", headers=headers)
+    assert r.status_code == 404
+
+
+def test_remove_unknown_contribution_404s(client):
+    headers = _auth_headers(client, "remover4@example.com")
+    r = client.delete("/api/guides/contributions/999999", headers=headers)
+    assert r.status_code == 404
+
+
 def test_voting_raises_confidence_score(client):
     contribution_id = _first_contribution_id(client)
     figure_id = next(

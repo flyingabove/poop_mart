@@ -220,3 +220,24 @@ def add_contribution(
         return {"id": cur.lastrowid, "guide_id": guide_id, "created_at": now}
     finally:
         conn.close()
+
+
+def remove_contribution(user_id: str, contribution_id: int) -> bool:
+    """Lets a contributor remove their own claim -- the closest honest
+    approximation of SHAKE_GUIDES_DESIGN.md's moderation-removal flow
+    available without an actual moderator role in the schema. Seed-era
+    contributions (user_id IS NULL) can't be removed this way since nobody
+    is authenticated as their author."""
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT user_id FROM guide_contributions WHERE id = ?", (contribution_id,)
+        ).fetchone()
+        if not row or row["user_id"] != user_id:
+            return False
+        conn.execute("DELETE FROM contribution_votes WHERE contribution_id = ?", (contribution_id,))
+        conn.execute("DELETE FROM guide_contributions WHERE id = ?", (contribution_id,))
+        conn.commit()
+        return True
+    finally:
+        conn.close()

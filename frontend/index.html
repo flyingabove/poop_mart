@@ -1242,6 +1242,7 @@ async function openSeries(seriesId) {
         .map((c) => {
           const fig = seriesData.figures.find((f) => f.id === c.figure_id);
           const net = c.upvotes - c.downvotes;
+          const isMine = isLoggedIn() && c.contributor && AUTH.email.split("@")[0] === c.contributor;
           return `
       <div class="contrib-item" data-contribution-id="${c.id}">
         <div class="contrib-top">
@@ -1254,6 +1255,7 @@ async function openSeries(seriesId) {
           <button class="vote-btn ${c.my_vote === "down" ? "active-down" : ""}" data-direction="down">▼ ${c.downvotes}</button>
           <span class="vote-score">net ${net >= 0 ? "+" : ""}${net}</span>
           <span class="vote-score">${c.contributor ? "by @" + c.contributor : "community"}</span>
+          ${isMine ? `<button class="remove-btn" data-action="remove-contribution">Remove</button>` : ""}
         </div>
       </div>`;
         })
@@ -1359,6 +1361,15 @@ async function openSeries(seriesId) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ direction: btn.dataset.direction }),
       });
+      if (res.ok) openSeries(seriesId);
+    });
+  });
+
+  document.getElementById("detail-content").querySelectorAll('[data-action="remove-contribution"]').forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const contributionId = btn.closest(".contrib-item").dataset.contributionId;
+      const res = await apiFetch(`/api/guides/contributions/${contributionId}`, { method: "DELETE" });
       if (res.ok) openSeries(seriesId);
     });
   });

@@ -66,3 +66,10 @@ async def vote_contribution(contribution_id: int, body: VoteIn, user: dict = Dep
         return guides_service.vote_contribution(user["id"], contribution_id, body.direction)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.delete("/guides/contributions/{contribution_id}")
+async def delete_contribution(contribution_id: int, user: dict = Depends(get_current_user)):
+    if not guides_service.remove_contribution(user["id"], contribution_id):
+        raise HTTPException(status_code=404, detail="contribution not found")
+    return {"id": contribution_id, "removed": True}
