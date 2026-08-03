@@ -23,4 +23,7 @@ RUN if [ "${RUN_TESTS:-1}" != "0" ]; then \
 
 EXPOSE 8000
 
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Railway assigns its own $PORT for the generated domain to route to; fall
+# back to 8000 for local `docker run`. Shell form (not exec form) so $PORT
+# expands at container start.
+CMD uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}
