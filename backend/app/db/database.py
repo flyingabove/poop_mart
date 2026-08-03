@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS guide_contributions (
     upvotes         INTEGER DEFAULT 0,
     downvotes       INTEGER DEFAULT 0,
     video_url       TEXT,
+    user_id         TEXT REFERENCES users(id),
     created_at      INTEGER NOT NULL
 );
 
@@ -180,13 +181,19 @@ def _migrate(conn: sqlite3.Connection) -> None:
     IF NOT EXISTS) *after* the column is guaranteed to exist, whether that's
     from a fresh CREATE TABLE or from the ALTER TABLE just above.
     """
-    cols = {row["name"] for row in conn.execute("PRAGMA table_info(feed_cards)")}
-    if "external_id" not in cols:
+    feed_cols = {row["name"] for row in conn.execute("PRAGMA table_info(feed_cards)")}
+    if "external_id" not in feed_cols:
         conn.execute("ALTER TABLE feed_cards ADD COLUMN external_id TEXT")
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_external_id "
         "ON feed_cards(external_id) WHERE external_id IS NOT NULL"
     )
+
+    contrib_cols = {row["name"] for row in conn.execute("PRAGMA table_info(guide_contributions)")}
+    if "user_id" not in contrib_cols:
+        # Nullable: pre-existing (seed/anonymous-era) contributions have no
+        # attributable user and stay that way -- this isn't backfilled.
+        conn.execute("ALTER TABLE guide_contributions ADD COLUMN user_id TEXT REFERENCES users(id)")
 
 
 def init_db() -> None:

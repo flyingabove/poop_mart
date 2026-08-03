@@ -40,7 +40,7 @@ async def get_guide(series_id: str, user: Optional[dict] = Depends(get_optional_
 
 
 @router.post("/guides/{series_id}/contributions", status_code=201)
-async def add_contribution(series_id: str, body: ContributionIn):
+async def add_contribution(series_id: str, body: ContributionIn, user: dict = Depends(get_current_user)):
     if not CatalogRepo.get_series(series_id):
         raise HTTPException(status_code=404, detail="series not found")
     if not CatalogRepo.get_figure(body.figure_id):
@@ -51,6 +51,7 @@ async def add_contribution(series_id: str, body: ContributionIn):
             figure_id=body.figure_id,
             technique_type=body.technique_type,
             claim_text=body.claim_text,
+            user_id=user["id"],
             weight_range_g=body.weight_range_g,
             video_url=body.video_url,
         )

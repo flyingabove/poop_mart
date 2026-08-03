@@ -21,7 +21,13 @@ def test_get_guide_unknown_series_404s(client):
     assert r.status_code == 404
 
 
+def _auth_headers(client, email="voter1@example.com"):
+    r = client.post("/api/auth/signup", json={"email": email, "password": "hunter2222"})
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
 def test_add_contribution_and_reflect_in_guide(client):
+    headers = _auth_headers(client, "contributor1@example.com")
     r = client.post(
         "/api/guides/labubu-forest-party/contributions",
         json={
@@ -30,6 +36,7 @@ def test_add_contribution_and_reflect_in_guide(client):
             "claim_text": "Measured 46g on a digital scale.",
             "weight_range_g": "46-48g",
         },
+        headers=headers,
     )
     assert r.status_code == 201
 
@@ -38,7 +45,36 @@ def test_add_contribution_and_reflect_in_guide(client):
     assert pinecone["contribution_count"] >= 2  # seed already had 1
 
 
+def test_add_contribution_requires_auth(client):
+    r = client.post(
+        "/api/guides/labubu-forest-party/contributions",
+        json={"figure_id": "lfp-pinecone-guard", "technique_type": "weight", "claim_text": "no auth header"},
+    )
+    assert r.status_code == 401
+
+
+def test_add_contribution_is_attributed_to_the_poster(client):
+    headers = _auth_headers(client, "contributor2@example.com")
+    client.post(
+        "/api/guides/labubu-forest-party/contributions",
+        json={"figure_id": "lfp-berry-picker", "technique_type": "sound", "claim_text": "faint rattle"},
+        headers=headers,
+    )
+
+    data = client.get("/api/guides/labubu-forest-party").json()
+    mine = next(c for c in data["contributions"] if c["claim_text"] == "faint rattle")
+    assert mine["contributor"] == "contributor2"  # local part of the email, not the full address
+    assert "@" not in mine["contributor"]
+
+
+def test_seeded_contributions_have_no_contributor(client):
+    # Seed-era contributions predate auth and are never backfilled with a user.
+    data = client.get("/api/guides/labubu-forest-party").json()
+    assert any(c["contributor"] is None for c in data["contributions"])
+
+
 def test_add_contribution_rejects_unknown_technique(client):
+    headers = _auth_headers(client, "contributor3@example.com")
     r = client.post(
         "/api/guides/labubu-forest-party/contributions",
         json={
@@ -46,13 +82,9 @@ def test_add_contribution_rejects_unknown_technique(client):
             "technique_type": "x-ray",
             "claim_text": "not a real technique",
         },
+        headers=headers,
     )
     assert r.status_code == 422
-
-
-def _auth_headers(client, email="voter1@example.com"):
-    r = client.post("/api/auth/signup", json={"email": email, "password": "hunter2222"})
-    return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
 
 def _first_contribution_id(client):

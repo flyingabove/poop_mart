@@ -14,9 +14,21 @@ rather than replaced -- switching wholesale to a votes-derived count would
 zero out the flagship demo guide's confidence scores, since the seed data
 has no corresponding contribution_votes rows. Displayed/scored vote counts
 are baseline + real votes, added together.
+
+Contribution authorship: `guide_contributions.user_id` is nullable --
+seed-era contributions predate auth and have no attributable user, and
+that's not backfilled. New contributions require a logged-in user (see
+api/guides.py), matching voting's existing auth requirement -- posting a
+contribution anonymously while voting on it required login was an
+inconsistency, and anonymous authorship also made a real "Guide
+Contributor" badge impossible to compute honestly.
 """
 import time
 from backend.app.db.database import get_connection
+
+
+def _display_handle(email: str | None) -> str | None:
+    return email.split("@")[0] if email else None
 
 
 def _confidence(contribution_count: int, net_votes: int) -> int:
@@ -37,7 +49,9 @@ def get_guide(series_id: str, user_id: str | None = None) -> dict | None:
         ).fetchall()
 
         contributions = conn.execute(
-            "SELECT * FROM guide_contributions WHERE guide_id = ? ORDER BY created_at DESC",
+            "SELECT gc.*, u.email AS contributor_email FROM guide_contributions gc "
+            "LEFT JOIN users u ON u.id = gc.user_id "
+            "WHERE gc.guide_id = ? ORDER BY gc.created_at DESC",
             (guide["id"],),
         ).fetchall()
 
@@ -104,6 +118,7 @@ def get_guide(series_id: str, user_id: str | None = None) -> dict | None:
                 "video_url": c["video_url"],
                 "created_at": c["created_at"],
                 "my_vote": my_votes.get(c["id"]),
+                "contributor": _display_handle(c["contributor_email"]),
             })
 
         return {
@@ -172,6 +187,7 @@ def add_contribution(
     figure_id: str,
     technique_type: str,
     claim_text: str,
+    user_id: str,
     weight_range_g: str | None = None,
     video_url: str | None = None,
 ) -> dict:
@@ -196,9 +212,9 @@ def add_contribution(
         now = int(time.time())
         cur = conn.execute(
             "INSERT INTO guide_contributions "
-            "(guide_id, figure_id, technique_type, claim_text, weight_range_g, video_url, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (guide_id, figure_id, technique_type, claim_text, weight_range_g, video_url, now),
+            "(guide_id, figure_id, technique_type, claim_text, weight_range_g, video_url, user_id, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (guide_id, figure_id, technique_type, claim_text, weight_range_g, video_url, user_id, now),
         )
         conn.commit()
         return {"id": cur.lastrowid, "guide_id": guide_id, "created_at": now}
