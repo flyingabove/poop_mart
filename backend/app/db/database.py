@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS feed_cards (
     sentiment_score     REAL,
     region              TEXT,
     external_id         TEXT,
+    user_id             TEXT REFERENCES users(id),
     created_at          INTEGER NOT NULL
 );
 
@@ -224,6 +225,13 @@ def _migrate(conn: sqlite3.Connection) -> None:
         # Nullable: pre-existing (seed/anonymous-era) contributions have no
         # attributable user and stay that way -- this isn't backfilled.
         conn.execute("ALTER TABLE guide_contributions ADD COLUMN user_id TEXT REFERENCES users(id)")
+
+    feed_card_cols = {row["name"] for row in conn.execute("PRAGMA table_info(feed_cards)")}
+    if "user_id" not in feed_card_cols:
+        # Nullable: seed/ingested cards (news, trending, etc.) have no
+        # poster and stay that way. Only used by user-authored
+        # community_post cards going forward.
+        conn.execute("ALTER TABLE feed_cards ADD COLUMN user_id TEXT REFERENCES users(id)")
 
 
 def init_db() -> None:

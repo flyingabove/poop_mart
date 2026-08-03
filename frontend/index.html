@@ -777,6 +777,7 @@ function cardHtml(card) {
   }
   meta.push(`<span class="chip trust-${card.source_trust_tier}">${card.source_trust_tier.replace("_", " ")}</span>`);
   meta.push(`<span class="chip">${timeAgo(card.created_at)}</span>`);
+  if (card.poster) meta.push(`<span class="chip">by @${card.poster}</span>`);
   if (card.followed) meta.push(`<span class="chip card-followed-tag">★ Following</span>`);
 
   return `
@@ -922,6 +923,17 @@ async function openFigure(figureId) {
        </form>`
     : `<div class="sig-detail">Sign in to leave a review.</div>`;
 
+  const postFormHtml = isLoggedIn()
+    ? `<form class="contrib-form" id="community-post-form" style="margin-top:0; padding-top:0; border-top:none;">
+         <label>Title</label>
+         <input name="title" required placeholder="e.g. Finally pulled it!" />
+         <label>Tell the story</label>
+         <textarea name="body" rows="2" required placeholder="How many boxes did it take?"></textarea>
+         <button type="submit">Post</button>
+         <div class="form-note" id="community-post-note">Posted to the feed.</div>
+       </form>`
+    : `<div class="sig-detail">Sign in to share your pull.</div>`;
+
   showDetail(`
     <div class="detail-header">
       <h1>${fig.figure.name}</h1>
@@ -930,6 +942,10 @@ async function openFigure(figureId) {
     ${priceBox}
     ${actionBtns}
     <div class="guide-box" style="margin-top:16px;">
+      <h2>📷 Share Your Pull</h2>
+      ${postFormHtml}
+    </div>
+    <div class="guide-box">
       <h2>⭐ Reviews</h2>
       ${ratingSummaryHtml}
       ${reviewsListHtml}
@@ -940,6 +956,23 @@ async function openFigure(figureId) {
     </div>
   `);
   document.getElementById("view-series-link").addEventListener("click", () => openSeries(fig.figure.series_id));
+
+  const communityPostForm = document.getElementById("community-post-form");
+  if (communityPostForm) {
+    communityPostForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(communityPostForm);
+      const res = await apiFetch("/api/feed/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ figure_id: figureId, title: fd.get("title"), body: fd.get("body") }),
+      });
+      if (res.ok) {
+        document.getElementById("community-post-note").classList.add("show");
+        communityPostForm.reset();
+      }
+    });
+  }
 
   const reviewForm = document.getElementById("review-form");
   if (reviewForm) {

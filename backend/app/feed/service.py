@@ -6,9 +6,18 @@ recency + a trust-tier bump + (when the caller is logged in) a real
 personalization_match term against the user's followed series — see
 backend/app/follows/service.py. Anonymous requests, or a for_you request
 with no follows yet, get the same unpersonalized ranking as Trending.
+
+Community posts (the 📷 card type) were always documented as "people
+showing collections and pulls" but were seed-data only until now --
+create_community_post() is the real, user-authored path. A post requires
+a figure_id (the "pull" being shown); its series_id is looked up
+automatically so the card still participates in series-follow
+personalization like any other card.
 """
 import json
 import time
+import uuid
+
 from backend.app.db.database import get_connection
 
 _TRUST_WEIGHT = {
@@ -41,6 +50,7 @@ def _row_to_card(row) -> dict:
         "sentiment_score": row["sentiment_score"],
         "region": row["region"],
         "created_at": row["created_at"],
+        "poster": row["poster"],
     }
 
 
@@ -55,23 +65,29 @@ def list_feed(
         clauses, params = [], []
 
         if card_type:
-            clauses.append("card_type = ?")
+            clauses.append("fc.card_type = ?")
             params.append(card_type)
         elif tab in _TAB_CARD_TYPES:
             placeholders = ",".join("?" for _ in _TAB_CARD_TYPES[tab])
-            clauses.append(f"card_type IN ({placeholders})")
+            clauses.append(f"fc.card_type IN ({placeholders})")
             params.extend(_TAB_CARD_TYPES[tab])
         # "for_you" / unrecognized tab: no filter, same as Trending unpersonalized.
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = conn.execute(
-            f"SELECT * FROM feed_cards {where} ORDER BY created_at DESC LIMIT ?",
+            f"SELECT fc.*, u.email AS poster_email FROM feed_cards fc "
+            f"LEFT JOIN users u ON u.id = fc.user_id {where} "
+            f"ORDER BY fc.created_at DESC LIMIT ?",
             (*params, limit),
         ).fetchall()
 
         now = int(time.time())
         personalize = tab == "for_you" and followed_series
-        cards = [_row_to_card(r) for r in rows]
+        cards = []
+        for r in rows:
+            d = dict(r)
+            d["poster"] = d["poster_email"].split("@")[0] if d.get("poster_email") else None
+            cards.append(_row_to_card(d))
         for c in cards:
             age_hours = max((now - c["created_at"]) / 3600, 0.01)
             recency_decay = 1 / (1 + age_hours / 24)
@@ -84,5 +100,37 @@ def list_feed(
             c["_score"] = round(score, 4)
         cards.sort(key=lambda c: c["_score"], reverse=True)
         return cards
+    finally:
+        conn.close()
+
+
+class FeedError(Exception):
+    pass
+
+
+def create_community_post(user_id: str, figure_id: str, title: str, body: str) -> dict:
+    title = title.strip()
+    body = body.strip()
+    if not title:
+        raise FeedError("title is required")
+    if not body:
+        raise FeedError("body is required")
+
+    conn = get_connection()
+    try:
+        figure = conn.execute("SELECT series_id FROM figures WHERE id = ?", (figure_id,)).fetchone()
+        if not figure:
+            raise FeedError("figure not found")
+
+        card_id = f"post:{uuid.uuid4()}"
+        now = int(time.time())
+        conn.execute(
+            "INSERT INTO feed_cards "
+            "(id, card_type, figure_id, series_id, title, body, source_trust_tier, region, user_id, created_at) "
+            "VALUES (?, 'community_post', ?, ?, ?, ?, 'community', 'Global', ?, ?)",
+            (card_id, figure_id, figure["series_id"], title, body, user_id, now),
+        )
+        conn.commit()
+        return {"id": card_id, "figure_id": figure_id, "series_id": figure["series_id"], "created_at": now}
     finally:
         conn.close()

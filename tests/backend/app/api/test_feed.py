@@ -45,3 +45,74 @@ def test_for_you_is_personalized_after_following_a_series(client):
     assert followed_cards, "seed data should include at least one crybaby-crying-again card"
     assert all(c["followed"] is True for c in followed_cards)
     assert any(c.get("followed") is False for c in data["cards"]), "unfollowed cards should still appear, just unboosted"
+
+
+def _auth_headers(client, email="poster1@example.com"):
+    r = client.post("/api/auth/signup", json={"email": email, "password": "hunter2222"})
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+def test_seeded_cards_have_no_poster(client):
+    data = client.get("/api/feed").json()
+    assert any(c["poster"] is None for c in data["cards"])
+
+
+def test_create_community_post_requires_auth(client):
+    r = client.post(
+        "/api/feed/posts",
+        json={"figure_id": "lfp-forest-ranger", "title": "Pulled it!", "body": "So excited"},
+    )
+    assert r.status_code == 401
+
+
+def test_create_community_post_appears_in_feed_with_poster(client):
+    headers = _auth_headers(client, "poster2@example.com")
+    r = client.post(
+        "/api/feed/posts",
+        json={"figure_id": "lfp-berry-picker", "title": "Finally got Berry Picker!", "body": "Third box's the charm"},
+        headers=headers,
+    )
+    assert r.status_code == 201
+    post_id = r.json()["id"]
+    assert r.json()["series_id"] == "labubu-forest-party"  # auto-derived from the figure
+
+    data = client.get("/api/feed", params={"card_type": "community_post"}).json()
+    mine = next(c for c in data["cards"] if c["id"] == post_id)
+    assert mine["title"] == "Finally got Berry Picker!"
+    assert mine["poster"] == "poster2"
+    assert mine["figure_id"] == "lfp-berry-picker"
+
+
+def test_create_community_post_unknown_figure_422s(client):
+    headers = _auth_headers(client, "poster3@example.com")
+    r = client.post(
+        "/api/feed/posts",
+        json={"figure_id": "does-not-exist", "title": "x", "body": "y"},
+        headers=headers,
+    )
+    assert r.status_code == 422
+
+
+def test_create_community_post_rejects_empty_title(client):
+    headers = _auth_headers(client, "poster4@example.com")
+    r = client.post(
+        "/api/feed/posts",
+        json={"figure_id": "lfp-forest-ranger", "title": "  ", "body": "some body"},
+        headers=headers,
+    )
+    assert r.status_code == 422
+
+
+def test_community_post_participates_in_personalization(client):
+    headers = _auth_headers(client, "poster5@example.com")
+    client.post("/api/follows/series/labubu-forest-party", headers=headers)
+    r = client.post(
+        "/api/feed/posts",
+        json={"figure_id": "lfp-mushroom-nap", "title": "Got Mushroom Nap", "body": "Love it"},
+        headers=headers,
+    )
+    post_id = r.json()["id"]
+
+    data = client.get("/api/feed", params={"tab": "for_you"}, headers=headers).json()
+    mine = next(c for c in data["cards"] if c["id"] == post_id)
+    assert mine["followed"] is True
