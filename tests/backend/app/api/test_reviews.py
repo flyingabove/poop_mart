@@ -100,3 +100,73 @@ def test_delete_nonexistent_review_404s(client):
     headers = _auth_headers(client, "reviewer8@example.com")
     r = client.delete("/api/figures/lm-vanilla/reviews", headers=headers)
     assert r.status_code == 404
+
+
+# Review-voting tests use lfp-acorn-hoarder, a figure untouched by any
+# other review test in this file (or by iteration 13's badge tests) --
+# cb-tears/lfp-forest-ranger/lm-vanilla/sp-nightwatch all have exact
+# review_count assertions above that an extra review would break.
+
+def _post_review_get_id(client, email, figure_id="lfp-acorn-hoarder"):
+    headers = _auth_headers(client, email)
+    client.post(f"/api/figures/{figure_id}/reviews", json={"rating": 4, "text": "solid"}, headers=headers)
+    data = client.get(f"/api/figures/{figure_id}/reviews").json()
+    review = next(r for r in data["reviews"] if r["reviewer"] == email.split("@")[0])
+    return review["id"], headers
+
+
+def test_vote_review_requires_auth(client):
+    review_id, _ = _post_review_get_id(client, "reviewvoter1@example.com")
+    r = client.post(f"/api/reviews/{review_id}/vote", json={"direction": "helpful"})
+    assert r.status_code == 401
+
+
+def test_vote_helpful_increases_helpful_count(client):
+    review_id, _ = _post_review_get_id(client, "reviewvoter2@example.com")
+    voter_headers = _auth_headers(client, "reviewvoter3@example.com")
+
+    r = client.post(f"/api/reviews/{review_id}/vote", json={"direction": "helpful"}, headers=voter_headers)
+    assert r.status_code == 200
+    assert r.json()["helpful_count"] == 1
+    assert r.json()["unhelpful_count"] == 0
+
+
+def test_changing_review_vote_does_not_double_count(client):
+    review_id, _ = _post_review_get_id(client, "reviewvoter4@example.com")
+    voter_headers = _auth_headers(client, "reviewvoter5@example.com")
+
+    helpful_result = client.post(
+        f"/api/reviews/{review_id}/vote", json={"direction": "helpful"}, headers=voter_headers
+    ).json()
+    unhelpful_result = client.post(
+        f"/api/reviews/{review_id}/vote", json={"direction": "unhelpful"}, headers=voter_headers
+    ).json()
+    assert unhelpful_result["helpful_count"] == helpful_result["helpful_count"] - 1
+    assert unhelpful_result["unhelpful_count"] == helpful_result["unhelpful_count"] + 1
+
+
+def test_vote_review_rejects_invalid_direction(client):
+    review_id, _ = _post_review_get_id(client, "reviewvoter6@example.com")
+    voter_headers = _auth_headers(client, "reviewvoter7@example.com")
+    r = client.post(f"/api/reviews/{review_id}/vote", json={"direction": "sideways"}, headers=voter_headers)
+    assert r.status_code == 422
+
+
+def test_vote_unknown_review_422s(client):
+    voter_headers = _auth_headers(client, "reviewvoter8@example.com")
+    r = client.post("/api/reviews/999999/vote", json={"direction": "helpful"}, headers=voter_headers)
+    assert r.status_code == 422
+
+
+def test_my_review_vote_reflected_in_reviews_response(client):
+    review_id, _ = _post_review_get_id(client, "reviewvoter9@example.com")
+    voter_headers = _auth_headers(client, "reviewvoter10@example.com")
+    client.post(f"/api/reviews/{review_id}/vote", json={"direction": "helpful"}, headers=voter_headers)
+
+    data = client.get("/api/figures/lfp-acorn-hoarder/reviews", headers=voter_headers).json()
+    mine = next(r for r in data["reviews"] if r["id"] == review_id)
+    assert mine["my_vote"] == "helpful"
+
+    anon_data = client.get("/api/figures/lfp-acorn-hoarder/reviews").json()
+    anon_mine = next(r for r in anon_data["reviews"] if r["id"] == review_id)
+    assert anon_mine["my_vote"] is None

@@ -6,6 +6,13 @@ than stacking duplicate reviews. Reviewer identity shown publicly is the
 email's local part (before @), not the full address -- there's no separate
 display-name/username field yet, and showing a full email on a public
 review is more than this feature needs to expose.
+
+Helpfulness voting: USER_PROFILES_AND_SOCIAL_DESIGN.md defines "Top
+Reviewer" as review volume *and* helpfulness votes, but only volume was
+ever implemented (badges/service.py). Unlike guide_contributions, the
+`reviews` table has no seed data and never had hardcoded vote counts, so
+helpful/unhelpful counts here are computed purely from `review_votes` --
+no baseline-offset merging needed, unlike the guide-contribution case.
 """
 import time
 
@@ -51,7 +58,7 @@ def remove_review(user_id: str, figure_id: str) -> bool:
         conn.close()
 
 
-def list_reviews(figure_id: str, limit: int = 50) -> dict:
+def list_reviews(figure_id: str, limit: int = 50, user_id: str | None = None) -> dict:
     conn = get_connection()
     try:
         rows = conn.execute(
@@ -60,16 +67,41 @@ def list_reviews(figure_id: str, limit: int = 50) -> dict:
             "WHERE r.figure_id = ? ORDER BY r.created_at DESC LIMIT ?",
             (figure_id, limit),
         ).fetchall()
-        reviews = [
-            {
+
+        vote_rows = conn.execute(
+            "SELECT review_id, "
+            "SUM(CASE WHEN direction = 'helpful' THEN 1 ELSE 0 END) AS helpful, "
+            "SUM(CASE WHEN direction = 'unhelpful' THEN 1 ELSE 0 END) AS unhelpful "
+            "FROM review_votes "
+            "WHERE review_id IN (SELECT id FROM reviews WHERE figure_id = ?) "
+            "GROUP BY review_id",
+            (figure_id,),
+        ).fetchall()
+        vote_counts = {r["review_id"]: (r["helpful"] or 0, r["unhelpful"] or 0) for r in vote_rows}
+
+        my_votes: dict[int, str] = {}
+        if user_id:
+            my_vote_rows = conn.execute(
+                "SELECT review_id, direction FROM review_votes "
+                "WHERE user_id = ? AND review_id IN (SELECT id FROM reviews WHERE figure_id = ?)",
+                (user_id, figure_id),
+            ).fetchall()
+            my_votes = {r["review_id"]: r["direction"] for r in my_vote_rows}
+
+        reviews = []
+        for row in rows:
+            helpful, unhelpful = vote_counts.get(row["id"], (0, 0))
+            reviews.append({
                 "id": row["id"],
                 "rating": row["rating"],
                 "text": row["text"],
                 "created_at": row["created_at"],
                 "reviewer": _display_handle(row["email"]),
-            }
-            for row in rows
-        ]
+                "helpful_count": helpful,
+                "unhelpful_count": unhelpful,
+                "my_vote": my_votes.get(row["id"]),
+            })
+
         agg = conn.execute(
             "SELECT AVG(rating) AS avg_rating, COUNT(*) AS n FROM reviews WHERE figure_id = ?", (figure_id,)
         ).fetchone()
@@ -77,6 +109,44 @@ def list_reviews(figure_id: str, limit: int = 50) -> dict:
             "average_rating": round(agg["avg_rating"], 2) if agg["avg_rating"] is not None else None,
             "review_count": agg["n"],
             "reviews": reviews,
+        }
+    finally:
+        conn.close()
+
+
+_ALLOWED_REVIEW_VOTE_DIRECTIONS = {"helpful", "unhelpful"}
+
+
+def vote_review(user_id: str, review_id: int, direction: str) -> dict:
+    if direction not in _ALLOWED_REVIEW_VOTE_DIRECTIONS:
+        raise ValueError(f"direction must be one of {sorted(_ALLOWED_REVIEW_VOTE_DIRECTIONS)}")
+
+    conn = get_connection()
+    try:
+        if not conn.execute("SELECT id FROM reviews WHERE id = ?", (review_id,)).fetchone():
+            raise ValueError("review not found")
+
+        now = int(time.time())
+        conn.execute(
+            "INSERT INTO review_votes (user_id, review_id, direction, created_at) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(user_id, review_id) DO UPDATE SET "
+            "direction = excluded.direction, created_at = excluded.created_at",
+            (user_id, review_id, direction, now),
+        )
+        conn.commit()
+
+        row = conn.execute(
+            "SELECT "
+            "SUM(CASE WHEN direction = 'helpful' THEN 1 ELSE 0 END) AS helpful, "
+            "SUM(CASE WHEN direction = 'unhelpful' THEN 1 ELSE 0 END) AS unhelpful "
+            "FROM review_votes WHERE review_id = ?",
+            (review_id,),
+        ).fetchone()
+        return {
+            "review_id": review_id,
+            "my_vote": direction,
+            "helpful_count": row["helpful"] or 0,
+            "unhelpful_count": row["unhelpful"] or 0,
         }
     finally:
         conn.close()

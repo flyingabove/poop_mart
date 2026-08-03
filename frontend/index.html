@@ -726,10 +726,14 @@ async function openFigure(figureId) {
     ? reviewsData.reviews
         .map(
           (r) => `
-      <div class="review-item">
+      <div class="review-item" data-review-id="${r.id}">
         <div class="review-top"><span class="review-stars">${starsHtml(r.rating)}</span><span class="review-author">@${r.reviewer}</span></div>
         ${r.text ? `<div class="review-text">${r.text}</div>` : ""}
-        <div class="list-item-sub">${timeAgo(r.created_at)}</div>
+        <div class="vote-row">
+          <button class="vote-btn review-vote-btn ${r.my_vote === "helpful" ? "active-up" : ""}" data-direction="helpful">👍 ${r.helpful_count}</button>
+          <button class="vote-btn review-vote-btn ${r.my_vote === "unhelpful" ? "active-down" : ""}" data-direction="unhelpful">👎 ${r.unhelpful_count}</button>
+          <span class="vote-score">${timeAgo(r.created_at)}</span>
+        </div>
       </div>`
         )
         .join("")
@@ -829,6 +833,22 @@ async function openFigure(figureId) {
       openFigure(figureId);
     });
   }
+
+  document.getElementById("detail-content").querySelectorAll(".review-vote-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!isLoggedIn()) {
+        openAuthModal("login");
+        return;
+      }
+      const reviewId = btn.closest(".review-item").dataset.reviewId;
+      const res = await apiFetch(`/api/reviews/${reviewId}/vote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction: btn.dataset.direction }),
+      });
+      if (res.ok) openFigure(figureId);
+    });
+  });
 }
 
 async function openSeries(seriesId) {

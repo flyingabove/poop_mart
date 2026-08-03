@@ -168,6 +168,17 @@ CREATE TABLE IF NOT EXISTS reviews (
 );
 
 CREATE INDEX IF NOT EXISTS idx_reviews_figure ON reviews(figure_id);
+
+CREATE TABLE IF NOT EXISTS review_votes (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         TEXT NOT NULL REFERENCES users(id),
+    review_id       INTEGER NOT NULL REFERENCES reviews(id),
+    direction       TEXT NOT NULL,
+    created_at      INTEGER NOT NULL,
+    UNIQUE(user_id, review_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_votes_review ON review_votes(review_id);
 """
 
 
