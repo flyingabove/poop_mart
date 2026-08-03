@@ -26,6 +26,7 @@ from backend.app.api.follows import router as follows_router
 from backend.app.api.notifications import router as notifications_router
 from backend.app.api.reviews import router as reviews_router
 from backend.app.api.rankings import router as rankings_router
+from backend.app.api.profiles import router as profiles_router
 
 _INDEX_HTML_PATH = Path(__file__).parent.parent.parent / "frontend" / "index.html"
 _IMG_DIR = Path(__file__).parent.parent.parent / "frontend" / "img"
@@ -70,6 +71,7 @@ app.include_router(follows_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
 app.include_router(reviews_router, prefix="/api")
 app.include_router(rankings_router, prefix="/api")
+app.include_router(profiles_router, prefix="/api")
 
 _IMG_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/img", StaticFiles(directory=str(_IMG_DIR)), name="img")

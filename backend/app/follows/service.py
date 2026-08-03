@@ -127,3 +127,23 @@ def is_following_user(follower_id: str, followed_id: str) -> bool:
         return row is not None
     finally:
         conn.close()
+
+
+def follower_count(user_id: str) -> int:
+    conn = get_connection()
+    try:
+        return conn.execute(
+            "SELECT COUNT(*) AS n FROM user_follows WHERE followed_id = ?", (user_id,)
+        ).fetchone()["n"]
+    finally:
+        conn.close()
+
+
+def following_count(user_id: str) -> int:
+    conn = get_connection()
+    try:
+        return conn.execute(
+            "SELECT COUNT(*) AS n FROM user_follows WHERE follower_id = ?", (user_id,)
+        ).fetchone()["n"]
+    finally:
+        conn.close()

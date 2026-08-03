@@ -105,6 +105,21 @@ def list_feed(
         conn.close()
 
 
+def list_posts_by_user(user_id: str, limit: int = 50) -> list[dict]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT fc.id, fc.figure_id, fc.series_id, fc.title, fc.body, fc.created_at, f.name AS figure_name "
+            "FROM feed_cards fc JOIN figures f ON f.id = fc.figure_id "
+            "WHERE fc.card_type = 'community_post' AND fc.user_id = ? "
+            "ORDER BY fc.created_at DESC LIMIT ?",
+            (user_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 class FeedError(Exception):
     pass
 

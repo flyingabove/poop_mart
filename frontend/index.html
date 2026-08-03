@@ -196,6 +196,8 @@
   }
   .follow-btn.following { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
   .card-followed-tag { color: var(--accent); border-color: var(--accent); font-weight: 800; }
+  .profile-link { cursor: pointer; text-decoration: underline; text-decoration-color: var(--border); }
+  .profile-link:hover { color: var(--accent); text-decoration-color: var(--accent); }
 
   #my-collection-btn { font-size: 18px; background: none !important; border: none !important; padding: 4px !important; }
 
@@ -609,7 +611,7 @@ async function openRanking(rankingId) {
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
         <div>
           <h1>${ranking.title}</h1>
-          <div class="sub">by @${ranking.owner}</div>
+          <div class="sub">by <span class="profile-link" id="ranking-owner-link">@${ranking.owner}</span></div>
         </div>
         ${followOwnerBtnHtml}
       </div>
@@ -669,6 +671,106 @@ async function openRanking(rankingId) {
       const method = isFollowingOwner ? "DELETE" : "POST";
       const res = await apiFetch(`/api/follows/users/${ranking.owner_id}`, { method });
       if (res.ok) openRanking(rankingId);
+    });
+  }
+
+  const ownerLink = document.getElementById("ranking-owner-link");
+  if (ownerLink) {
+    ownerLink.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openUserProfile(ranking.owner_id);
+    });
+  }
+}
+
+/* ---------------- User profile screen ---------------- */
+
+async function openUserProfile(userId) {
+  const res = await apiFetch(`/api/users/${userId}/profile`);
+  if (!res.ok) {
+    showDetail(`<div class="detail-header"><h1>Collector not found</h1></div>`);
+    return;
+  }
+  const profile = await res.json();
+  const isSelf = isLoggedIn() && AUTH.email.split("@")[0] === profile.handle;
+
+  const badgesHtml = profile.badges.length
+    ? profile.badges.map((b) => `<span class="chip badge-chip" title="${b.description}">🏅 ${b.label}</span>`).join("")
+    : "";
+
+  const rankingsHtml = profile.rankings.length
+    ? profile.rankings
+        .map(
+          (rk) => `
+      <div class="list-item" data-ranking-id="${rk.id}">
+        <div class="list-item-main">
+          <div class="list-item-name">${rk.title}</div>
+          <div class="list-item-sub">${rk.item_count} figure${rk.item_count === 1 ? "" : "s"}</div>
+        </div>
+      </div>`
+        )
+        .join("")
+    : `<div class="sig-detail">No rankings yet.</div>`;
+
+  const postsHtml = profile.posts.length
+    ? profile.posts
+        .map(
+          (p) => `
+      <div class="list-item" data-figure-id="${p.figure_id}">
+        <div class="list-item-main">
+          <div class="list-item-name">${p.title}</div>
+          <div class="list-item-sub">${p.figure_name} · ${timeAgo(p.created_at)}</div>
+        </div>
+      </div>`
+        )
+        .join("")
+    : `<div class="sig-detail">No posts yet.</div>`;
+
+  const followBtnHtml = isSelf
+    ? ""
+    : isLoggedIn()
+    ? `<button class="follow-btn ${profile.viewer_is_following ? "following" : ""}" id="follow-profile-btn">${profile.viewer_is_following ? "✓ Following" : "+ Follow"}</button>`
+    : `<button class="follow-btn" id="follow-profile-btn">Sign in to follow</button>`;
+
+  showDetail(`
+    <div class="detail-header">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+        <div>
+          <h1>@${profile.handle}</h1>
+          <div class="sub">${profile.follower_count} follower${profile.follower_count === 1 ? "" : "s"} · ${profile.following_count} following</div>
+          ${badgesHtml ? `<div class="card-meta" style="margin-top:8px;">${badgesHtml}</div>` : ""}
+        </div>
+        ${followBtnHtml}
+      </div>
+    </div>
+    <div class="guide-box">
+      <div class="section-title">Rankings (${profile.rankings.length})</div>
+      ${rankingsHtml}
+    </div>
+    <div class="guide-box">
+      <div class="section-title">Pulls &amp; Posts (${profile.posts.length})</div>
+      ${postsHtml}
+    </div>
+  `);
+
+  const detailContent = document.getElementById("detail-content");
+  detailContent.querySelectorAll(".list-item").forEach((el) =>
+    el.addEventListener("click", () => {
+      if (el.dataset.rankingId) openRanking(el.dataset.rankingId);
+      else openFigure(el.dataset.figureId);
+    })
+  );
+
+  const followProfileBtn = document.getElementById("follow-profile-btn");
+  if (followProfileBtn) {
+    followProfileBtn.addEventListener("click", async () => {
+      if (!isLoggedIn()) {
+        openAuthModal("login");
+        return;
+      }
+      const method = profile.viewer_is_following ? "DELETE" : "POST";
+      const res = await apiFetch(`/api/follows/users/${userId}`, { method });
+      if (res.ok) openUserProfile(userId);
     });
   }
 }
@@ -809,7 +911,7 @@ function cardHtml(card) {
   }
   meta.push(`<span class="chip trust-${card.source_trust_tier}">${card.source_trust_tier.replace("_", " ")}</span>`);
   meta.push(`<span class="chip">${timeAgo(card.created_at)}</span>`);
-  if (card.poster) meta.push(`<span class="chip">by @${card.poster}</span>`);
+  if (card.poster) meta.push(`<span class="chip profile-link" data-poster-id="${card.poster_id}">by @${card.poster}</span>`);
   if (card.followed) meta.push(`<span class="chip card-followed-tag">★ Following</span>`);
 
   return `
@@ -828,7 +930,13 @@ async function loadFeed() {
   emptyEl.style.display = data.cards.length ? "none" : "block";
   feedEl.innerHTML = data.cards.map(cardHtml).join("");
   feedEl.querySelectorAll(".card").forEach((el) =>
-    el.addEventListener("click", () => {
+    el.addEventListener("click", (e) => {
+      const posterChip = e.target.closest("[data-poster-id]");
+      if (posterChip) {
+        e.stopPropagation();
+        openUserProfile(posterChip.dataset.posterId);
+        return;
+      }
       const figureId = el.dataset.figureId;
       const seriesId = el.dataset.seriesId;
       if (figureId) openFigure(figureId);
