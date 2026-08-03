@@ -89,6 +89,17 @@ CREATE TABLE IF NOT EXISTS guide_contributions (
 
 CREATE INDEX IF NOT EXISTS idx_contrib_guide ON guide_contributions(guide_id);
 
+CREATE TABLE IF NOT EXISTS contribution_votes (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             TEXT NOT NULL REFERENCES users(id),
+    contribution_id     INTEGER NOT NULL REFERENCES guide_contributions(id),
+    direction           TEXT NOT NULL,
+    created_at          INTEGER NOT NULL,
+    UNIQUE(user_id, contribution_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_contribution_votes_contribution ON contribution_votes(contribution_id);
+
 CREATE TABLE IF NOT EXISTS users (
     id              TEXT PRIMARY KEY,
     email           TEXT NOT NULL UNIQUE,

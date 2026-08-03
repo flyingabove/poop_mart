@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from backend.app.auth.dependencies import get_current_user, get_optional_user
 from backend.app.db.repos import CatalogRepo
 from backend.app.guides import service as guides_service
 
@@ -15,11 +16,15 @@ class ContributionIn(BaseModel):
     video_url: Optional[str] = None
 
 
+class VoteIn(BaseModel):
+    direction: str  # "up" or "down"
+
+
 @router.get("/guides/{series_id}")
-async def get_guide(series_id: str):
+async def get_guide(series_id: str, user: Optional[dict] = Depends(get_optional_user)):
     if not CatalogRepo.get_series(series_id):
         raise HTTPException(status_code=404, detail="series not found")
-    guide = guides_service.get_guide(series_id)
+    guide = guides_service.get_guide(series_id, user_id=user["id"] if user else None)
     if not guide:
         return {
             "series_id": series_id,
@@ -52,3 +57,11 @@ async def add_contribution(series_id: str, body: ContributionIn):
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return result
+
+
+@router.post("/guides/contributions/{contribution_id}/vote")
+async def vote_contribution(contribution_id: int, body: VoteIn, user: dict = Depends(get_current_user)):
+    try:
+        return guides_service.vote_contribution(user["id"], contribution_id, body.direction)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))

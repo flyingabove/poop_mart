@@ -234,6 +234,18 @@
   .rating-count { color: var(--text-muted); font-size: 12.5px; }
   .star-picker { font-size: 24px; letter-spacing: 4px; margin: 6px 0; color: var(--accent); }
   .star-pick { cursor: pointer; }
+
+  .contrib-item { border-top: 1px solid var(--border); padding: 10px 0; font-size: 13px; }
+  .contrib-item:first-of-type { border-top: none; }
+  .contrib-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+  .contrib-figure { font-weight: 700; }
+  .contrib-technique { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .contrib-claim { color: var(--text-sub); margin-bottom: 6px; }
+  .vote-row { display: flex; align-items: center; gap: 8px; }
+  .vote-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text-sub); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+  .vote-btn.active-up { background: rgba(53,197,106,0.15); border-color: var(--good); color: var(--good); }
+  .vote-btn.active-down { background: rgba(229,72,77,0.15); border-color: var(--bad); color: var(--bad); }
+  .vote-score { font-size: 11.5px; color: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -814,7 +826,7 @@ async function openFigure(figureId) {
 async function openSeries(seriesId) {
   const [seriesRes, guideRes] = await Promise.all([
     fetch(`/api/series/${seriesId}`),
-    fetch(`/api/guides/${seriesId}`),
+    apiFetch(`/api/guides/${seriesId}`),
   ]);
   const seriesData = await seriesRes.json();
   const guide = await guideRes.json();
@@ -835,6 +847,29 @@ async function openSeries(seriesId) {
         )
         .join("")
     : `<div class="sig-detail">Not enough data yet — be the first to add a tell below.</div>`;
+
+  const contributionsHtml = guide.contributions.length
+    ? guide.contributions
+        .slice(0, 20)
+        .map((c) => {
+          const fig = seriesData.figures.find((f) => f.id === c.figure_id);
+          const net = c.upvotes - c.downvotes;
+          return `
+      <div class="contrib-item" data-contribution-id="${c.id}">
+        <div class="contrib-top">
+          <span class="contrib-figure">${fig ? fig.name : c.figure_id}</span>
+          <span class="contrib-technique">${c.technique_type}</span>
+        </div>
+        <div class="contrib-claim">${c.claim_text}</div>
+        <div class="vote-row">
+          <button class="vote-btn ${c.my_vote === "up" ? "active-up" : ""}" data-direction="up">▲ ${c.upvotes}</button>
+          <button class="vote-btn ${c.my_vote === "down" ? "active-down" : ""}" data-direction="down">▼ ${c.downvotes}</button>
+          <span class="vote-score">net ${net >= 0 ? "+" : ""}${net}</span>
+        </div>
+      </div>`;
+        })
+        .join("")
+    : "";
 
   let isFollowing = false;
   if (isLoggedIn()) {
@@ -864,6 +899,8 @@ async function openSeries(seriesId) {
       <div class="sig-detail" style="margin-bottom:12px;">${guide.technique_summary}</div>
       <div class="etiquette">${guide.etiquette_note}</div>
       ${signaturesHtml}
+
+      ${contributionsHtml ? `<div class="section-title">Recent Tells</div>${contributionsHtml}` : ""}
 
       <form class="contrib-form" id="contrib-form">
         <div style="font-size:13px; font-weight:700;">Add your tell</div>
@@ -914,6 +951,22 @@ async function openSeries(seriesId) {
     const method = isFollowing ? "DELETE" : "POST";
     const res = await apiFetch(`/api/follows/series/${seriesId}`, { method });
     if (res.ok) openSeries(seriesId);
+  });
+
+  document.getElementById("detail-content").querySelectorAll(".vote-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (!isLoggedIn()) {
+        openAuthModal("login");
+        return;
+      }
+      const contributionId = btn.closest(".contrib-item").dataset.contributionId;
+      const res = await apiFetch(`/api/guides/contributions/${contributionId}/vote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction: btn.dataset.direction }),
+      });
+      if (res.ok) openSeries(seriesId);
+    });
   });
 }
 
