@@ -2,9 +2,10 @@
 Feed assembly. See documentation/model_output_docs/FEED_SYSTEM_DESIGN.md.
 
 v1 ranking (per that doc) is a simple weighted blend, not a learned model:
-recency + a trust-tier bump. Personalization ("For You") is a placeholder —
-it currently behaves like Trending because there's no follow-graph yet
-(see backend/app/notifications/ and USER_PROFILES_AND_SOCIAL_DESIGN.md).
+recency + a trust-tier bump + (when the caller is logged in) a real
+personalization_match term against the user's followed series — see
+backend/app/follows/service.py. Anonymous requests, or a for_you request
+with no follows yet, get the same unpersonalized ranking as Trending.
 """
 import json
 import time
@@ -43,7 +44,12 @@ def _row_to_card(row) -> dict:
     }
 
 
-def list_feed(tab: str = "for_you", card_type: str | None = None, limit: int = 50) -> list[dict]:
+def list_feed(
+    tab: str = "for_you",
+    card_type: str | None = None,
+    limit: int = 50,
+    followed_series: set[str] | None = None,
+) -> list[dict]:
     conn = get_connection()
     try:
         clauses, params = [], []
@@ -64,12 +70,18 @@ def list_feed(tab: str = "for_you", card_type: str | None = None, limit: int = 5
         ).fetchall()
 
         now = int(time.time())
+        personalize = tab == "for_you" and followed_series
         cards = [_row_to_card(r) for r in rows]
         for c in cards:
             age_hours = max((now - c["created_at"]) / 3600, 0.01)
             recency_decay = 1 / (1 + age_hours / 24)
             trust = _TRUST_WEIGHT.get(c["source_trust_tier"], 0.4)
-            c["_score"] = round(0.7 * recency_decay + 0.3 * trust, 4)
+            score = 0.6 * recency_decay + 0.25 * trust
+            if personalize:
+                match = 1.0 if c["series_id"] in followed_series else 0.0
+                score += 0.15 * match
+                c["followed"] = bool(match)
+            c["_score"] = round(score, 4)
         cards.sort(key=lambda c: c["_score"], reverse=True)
         return cards
     finally:

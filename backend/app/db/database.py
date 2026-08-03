@@ -119,6 +119,16 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_wishlist_user ON wishlist_items(user_id);
+
+CREATE TABLE IF NOT EXISTS series_follows (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         TEXT NOT NULL REFERENCES users(id),
+    series_id       TEXT NOT NULL REFERENCES series(id),
+    created_at      INTEGER NOT NULL,
+    UNIQUE(user_id, series_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_series_follows_user ON series_follows(user_id);
 """
 
 

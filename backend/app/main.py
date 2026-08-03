@@ -22,6 +22,7 @@ from backend.app.api.search import router as search_router
 from backend.app.api.auth import router as auth_router
 from backend.app.api.collection import router as collection_router
 from backend.app.api.wishlist import router as wishlist_router
+from backend.app.api.follows import router as follows_router
 
 _INDEX_HTML_PATH = Path(__file__).parent.parent.parent / "frontend" / "index.html"
 _IMG_DIR = Path(__file__).parent.parent.parent / "frontend" / "img"
@@ -62,6 +63,7 @@ app.include_router(search_router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(collection_router, prefix="/api")
 app.include_router(wishlist_router, prefix="/api")
+app.include_router(follows_router, prefix="/api")
 
 _IMG_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/img", StaticFiles(directory=str(_IMG_DIR)), name="img")
