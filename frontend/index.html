@@ -381,16 +381,18 @@ function renderAuthArea() {
 /* ---------------- My Collection screen ---------------- */
 
 async function openMyCollection() {
-  const [colRes, valRes, wishRes, meRes] = await Promise.all([
+  const [colRes, valRes, wishRes, meRes, rankingsRes] = await Promise.all([
     apiFetch("/api/collection"),
     apiFetch("/api/collection/valuation"),
     apiFetch("/api/wishlist"),
     apiFetch("/api/auth/me"),
+    apiFetch("/api/rankings"),
   ]);
   const collection = (await colRes.json()).items;
   const valuation = await valRes.json();
   const wishlist = (await wishRes.json()).items;
   const me = await meRes.json();
+  const rankings = (await rankingsRes.json()).rankings;
 
   const badgesHtml = me.badges.length
     ? me.badges.map((b) => `<span class="chip badge-chip" title="${b.description}">🏅 ${b.label}</span>`).join("")
@@ -428,6 +430,20 @@ async function openMyCollection() {
         .join("")
     : `<div class="sig-detail">Nothing on your wishlist yet.</div>`;
 
+  const rankingsHtml = rankings.length
+    ? rankings
+        .map(
+          (rk) => `
+      <div class="list-item" data-ranking-id="${rk.id}">
+        <div class="list-item-main">
+          <div class="list-item-name">${rk.title}</div>
+          <div class="list-item-sub">${rk.item_count} figure${rk.item_count === 1 ? "" : "s"}</div>
+        </div>
+      </div>`
+        )
+        .join("")
+    : `<div class="sig-detail">No rankings yet — create one below, e.g. "My Top 10 Labubu Colorways".</div>`;
+
   showDetail(`
     <div class="detail-header">
       <h1>My Collection</h1>
@@ -446,6 +462,16 @@ async function openMyCollection() {
       ${collectionHtml}
       <div class="section-title">Wishlist (${wishlist.length})</div>
       ${wishlistHtml}
+    </div>
+
+    <div class="guide-box">
+      <div class="section-title">Rankings (${rankings.length})</div>
+      ${rankingsHtml}
+      <form class="contrib-form" id="new-ranking-form" style="margin-top:0; padding-top:0; border-top:none;">
+        <label>New ranking title</label>
+        <input name="title" required placeholder='e.g. "My Top 10 Labubu Colorways"' />
+        <button type="submit">Create</button>
+      </form>
     </div>
 
     <div class="guide-box">
@@ -480,9 +506,22 @@ async function openMyCollection() {
   detailContent.querySelectorAll(".list-item").forEach((el) =>
     el.addEventListener("click", (e) => {
       if (e.target.closest(".remove-btn")) return;
-      openFigure(el.dataset.figureId);
+      if (el.dataset.rankingId) openRanking(el.dataset.rankingId);
+      else openFigure(el.dataset.figureId);
     })
   );
+
+  const newRankingForm = document.getElementById("new-ranking-form");
+  newRankingForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(newRankingForm);
+    const res = await apiFetch("/api/rankings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: fd.get("title") }),
+    });
+    if (res.ok) openMyCollection();
+  });
 
   const changePasswordForm = document.getElementById("change-password-form");
   const changePasswordError = document.getElementById("change-password-error");
@@ -507,6 +546,99 @@ async function openMyCollection() {
       changePasswordError.style.display = "block";
     }
   });
+}
+
+/* ---------------- Ranking detail screen ---------------- */
+
+async function openRanking(rankingId) {
+  const res = await fetch(`/api/rankings/${rankingId}`);
+  if (!res.ok) {
+    showDetail(`<div class="detail-header"><h1>Ranking not found</h1></div>`);
+    return;
+  }
+  const ranking = await res.json();
+  const isOwner = isLoggedIn() && AUTH.email.split("@")[0] === ranking.owner;
+
+  const itemsHtml = ranking.items.length
+    ? ranking.items
+        .map(
+          (item, idx) => `
+      <div class="list-item" data-figure-id="${item.figure_id}">
+        <div class="list-item-main">
+          <div class="list-item-name">#${idx + 1} ${item.figure_name}</div>
+        </div>
+        ${isOwner ? `<button class="remove-btn" data-action="remove-ranking-item" data-figure-id="${item.figure_id}">Remove</button>` : ""}
+      </div>`
+        )
+        .join("")
+    : `<div class="sig-detail">No figures added yet.</div>`;
+
+  let addFormHtml = "";
+  if (isOwner) {
+    const figuresData = await (await fetch("/api/figures")).json();
+    const existingIds = new Set(ranking.items.map((i) => i.figure_id));
+    const options = figuresData.figures
+      .filter((f) => !existingIds.has(f.id))
+      .map((f) => `<option value="${f.id}">${f.name}</option>`)
+      .join("");
+    addFormHtml = options
+      ? `<form class="contrib-form" id="add-ranking-item-form" style="margin-top:16px;">
+           <label>Add a figure</label>
+           <select name="figure_id" required>${options}</select>
+           <button type="submit">Add</button>
+         </form>`
+      : `<div class="sig-detail" style="margin-top:12px;">All figures are already on this list.</div>`;
+  }
+
+  showDetail(`
+    <div class="detail-header">
+      <h1>${ranking.title}</h1>
+      <div class="sub">by @${ranking.owner}</div>
+    </div>
+    <div class="guide-box">
+      <div class="section-title">Ranked Figures</div>
+      ${itemsHtml}
+      ${addFormHtml}
+      ${isOwner ? `<button class="remove-btn" id="delete-ranking-btn" style="margin-top:16px;">Delete this ranking</button>` : ""}
+    </div>
+  `);
+
+  const detailContent = document.getElementById("detail-content");
+  detailContent.querySelectorAll('[data-action="remove-ranking-item"]').forEach((el) =>
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await apiFetch(`/api/rankings/${rankingId}/items/${el.dataset.figureId}`, { method: "DELETE" });
+      openRanking(rankingId);
+    })
+  );
+  detailContent.querySelectorAll(".list-item").forEach((el) =>
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".remove-btn")) return;
+      openFigure(el.dataset.figureId);
+    })
+  );
+
+  const addForm = document.getElementById("add-ranking-item-form");
+  if (addForm) {
+    addForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(addForm);
+      await apiFetch(`/api/rankings/${rankingId}/items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ figure_id: fd.get("figure_id") }),
+      });
+      openRanking(rankingId);
+    });
+  }
+
+  const deleteRankingBtn = document.getElementById("delete-ranking-btn");
+  if (deleteRankingBtn) {
+    deleteRankingBtn.addEventListener("click", async () => {
+      await apiFetch(`/api/rankings/${rankingId}`, { method: "DELETE" });
+      openMyCollection();
+    });
+  }
 }
 
 /* ---------------- Notifications ---------------- */

@@ -179,6 +179,25 @@ CREATE TABLE IF NOT EXISTS review_votes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_review_votes_review ON review_votes(review_id);
+
+CREATE TABLE IF NOT EXISTS rankings (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT NOT NULL REFERENCES users(id),
+    title       TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rankings_user ON rankings(user_id);
+
+CREATE TABLE IF NOT EXISTS ranking_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ranking_id  INTEGER NOT NULL REFERENCES rankings(id),
+    figure_id   TEXT NOT NULL REFERENCES figures(id),
+    created_at  INTEGER NOT NULL,
+    UNIQUE(ranking_id, figure_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ranking_items_ranking ON ranking_items(ranking_id);
 """
 
 
