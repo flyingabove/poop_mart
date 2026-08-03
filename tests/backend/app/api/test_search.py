@@ -45,6 +45,8 @@ def test_search_unrelated_query_returns_nothing(client):
     assert data["series"] == []
     assert data["figures"] == []
     assert data["posts"] == []
+    assert data["reviews"] == []
+    assert data["guide_contributions"] == []
 
 
 def _auth_headers(client, email):
@@ -79,3 +81,39 @@ def test_search_matches_community_post_body(client):
     r = client.get("/api/search", params={"q": "wobbleflarp42"})
     assert r.status_code == 200
     assert any(p["title"] == "Another pull" for p in r.json()["posts"])
+
+
+def test_search_matches_review_text(client):
+    headers = _auth_headers(client, "search-reviewer-a@example.com")
+    client.post(
+        "/api/figures/lfp-forest-ranger/reviews",
+        json={"rating": 5, "text": "Smells faintly of Quixolatte99, love it"},
+        headers=headers,
+    )
+
+    r = client.get("/api/search", params={"q": "quixolatte99"})
+    assert r.status_code == 200
+    hit = next(rv for rv in r.json()["reviews"] if rv["figure_id"] == "lfp-forest-ranger")
+    assert hit["rating"] == 5
+    assert hit["reviewer"] == "search-reviewer-a"
+    assert hit["figure_name"] == "Forest Ranger"
+
+
+def test_search_matches_guide_contribution_claim(client):
+    headers = _auth_headers(client, "search-contributor-a@example.com")
+    client.post(
+        "/api/guides/labubu-forest-party/contributions",
+        json={
+            "figure_id": "lfp-forest-ranger",
+            "technique_type": "sound",
+            "claim_text": "Rattles like a Zibbertronic42 when shaken",
+        },
+        headers=headers,
+    )
+
+    r = client.get("/api/search", params={"q": "zibbertronic42"})
+    assert r.status_code == 200
+    hit = next(g for g in r.json()["guide_contributions"] if g["figure_id"] == "lfp-forest-ranger")
+    assert hit["series_id"] == "labubu-forest-party"
+    assert hit["technique_type"] == "sound"
+    assert hit["contributor"] == "search-contributor-a"

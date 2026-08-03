@@ -14,11 +14,11 @@ Elasticsearch/OpenSearch once there's enough content volume to justify it;
 this is the honest, dependency-free v1 in the meantime.
 
 The Index section also names "free-text search over community posts,
-reviews, and guide content" -- only posts are implemented so far
-(_search_posts, plain substring match, no fuzzy fallback since post
-text is long-form and typos matter far less than in a short figure
-name). Reviews and guide contribution text are the same real gap,
-left for a follow-up rather than done sloppily in the same pass.
+reviews, and guide content" -- posts (_search_posts), reviews
+(_search_reviews), and guide contribution claims (_search_guides) are
+all now implemented, each a plain substring match, no fuzzy fallback
+since this is long-form free text where typos matter far less than in
+a short figure name.
 """
 import difflib
 
@@ -91,6 +91,57 @@ def _search_posts(conn, query: str, limit: int) -> list[dict]:
     ]
 
 
+def _search_reviews(conn, query: str, limit: int) -> list[dict]:
+    like = f"%{query.lower()}%"
+    rows = conn.execute(
+        "SELECT r.id, r.figure_id, r.rating, r.text, f.name AS figure_name, u.email AS reviewer_email "
+        "FROM reviews r "
+        "JOIN figures f ON f.id = r.figure_id "
+        "JOIN users u ON u.id = r.user_id "
+        "WHERE LOWER(r.text) LIKE ? "
+        "ORDER BY r.created_at DESC LIMIT ?",
+        (like, limit),
+    ).fetchall()
+    return [
+        {
+            "id": r["id"],
+            "figure_id": r["figure_id"],
+            "figure_name": r["figure_name"],
+            "rating": r["rating"],
+            "text": r["text"],
+            "reviewer": r["reviewer_email"].split("@")[0],
+        }
+        for r in rows
+    ]
+
+
+def _search_guides(conn, query: str, limit: int) -> list[dict]:
+    like = f"%{query.lower()}%"
+    rows = conn.execute(
+        "SELECT gc.id, gc.figure_id, gc.claim_text, gc.technique_type, f.name AS figure_name, "
+        "sg.series_id, u.email AS contributor_email "
+        "FROM guide_contributions gc "
+        "JOIN figures f ON f.id = gc.figure_id "
+        "JOIN shake_guides sg ON sg.id = gc.guide_id "
+        "LEFT JOIN users u ON u.id = gc.user_id "
+        "WHERE LOWER(gc.claim_text) LIKE ? "
+        "ORDER BY gc.created_at DESC LIMIT ?",
+        (like, limit),
+    ).fetchall()
+    return [
+        {
+            "id": r["id"],
+            "figure_id": r["figure_id"],
+            "figure_name": r["figure_name"],
+            "series_id": r["series_id"],
+            "technique_type": r["technique_type"],
+            "claim_text": r["claim_text"],
+            "contributor": r["contributor_email"].split("@")[0] if r["contributor_email"] else None,
+        }
+        for r in rows
+    ]
+
+
 def search(query: str, limit: int = 20) -> dict:
     conn = get_connection()
     try:
@@ -109,6 +160,8 @@ def search(query: str, limit: int = 20) -> dict:
             "series": [{"id": s["id"], "name": s["name"], "brand_line": s["brand_line"]} for s in all_series],
             "figures": [{"id": f["id"], "name": f["name"], "series_id": f["series_id"]} for f in all_figures],
             "posts": _search_posts(conn, query, limit),
+            "reviews": _search_reviews(conn, query, limit),
+            "guide_contributions": _search_guides(conn, query, limit),
         }
     finally:
         conn.close()

@@ -1409,6 +1409,18 @@ searchInput.addEventListener("input", () => {
         label: p.title,
         sub: `post on ${p.figure_name}${p.poster ? " by @" + p.poster : ""}`,
       })),
+      ...data.reviews.map((r) => ({
+        kind: "review",
+        id: r.figure_id,
+        label: `${r.rating}★ review of ${r.figure_name}`,
+        sub: r.text,
+      })),
+      ...data.guide_contributions.map((g) => ({
+        kind: "guide",
+        id: g.series_id,
+        label: `${g.technique_type} tell for ${g.figure_name}`,
+        sub: g.claim_text,
+      })),
     ];
     if (!hits.length) {
       searchResults.innerHTML = `<div class="search-hit">No matches for "${q}"</div>`;
@@ -1426,7 +1438,7 @@ searchResults.addEventListener("click", (e) => {
   if (!hit || !hit.dataset.id) return;
   searchResults.classList.remove("open");
   searchInput.value = "";
-  if (hit.dataset.kind === "series") openSeries(hit.dataset.id);
+  if (hit.dataset.kind === "series" || hit.dataset.kind === "guide") openSeries(hit.dataset.id);
   else openFigure(hit.dataset.id);
 });
 
