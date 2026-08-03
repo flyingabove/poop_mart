@@ -129,6 +129,21 @@ CREATE TABLE IF NOT EXISTS series_follows (
 );
 
 CREATE INDEX IF NOT EXISTS idx_series_follows_user ON series_follows(user_id);
+
+CREATE TABLE IF NOT EXISTS notifications (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             TEXT NOT NULL REFERENCES users(id),
+    notification_type   TEXT NOT NULL,
+    title               TEXT NOT NULL,
+    body                TEXT,
+    figure_id           TEXT REFERENCES figures(id),
+    series_id           TEXT REFERENCES series(id),
+    feed_card_id        TEXT REFERENCES feed_cards(id),
+    read_at             INTEGER,
+    created_at          INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, created_at DESC);
 """
 
 

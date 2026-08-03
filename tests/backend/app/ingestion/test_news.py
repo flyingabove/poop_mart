@@ -65,6 +65,42 @@ def test_ingest_google_news_inserts_and_dedupes(isolated_db, monkeypatch):
     assert second == 0  # same guids on re-poll -> nothing new
 
 
+def test_ingest_notifies_followers_of_resolved_series(isolated_db, monkeypatch):
+    """End-to-end: ingest -> resolve headline to a series -> notify anyone
+    following it. The fake client's "Pop Mart Labubu" query produces a
+    title containing "labubu", which should resolve via the series alias."""
+    monkeypatch.setattr(news_mod.httpx, "AsyncClient", _FakeAsyncClient)
+
+    conn = db_module.get_connection()
+    conn.execute(
+        "INSERT INTO series (id, name, aliases, brand_line, release_date, regions) VALUES (?, ?, ?, ?, ?, ?)",
+        ("labubu-forest-party", "Labubu Forest Party", "labubu", "Labubu", "2026-01-01", "Global"),
+    )
+    conn.execute(
+        "INSERT INTO users (id, email, password_salt, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+        ("user-1", "watcher@example.com", "salt", "hash", 0),
+    )
+    conn.execute(
+        "INSERT INTO series_follows (user_id, series_id, created_at) VALUES (?, ?, ?)",
+        ("user-1", "labubu-forest-party", 0),
+    )
+    conn.commit()
+    conn.close()
+
+    asyncio.run(news_mod.ingest_google_news())
+
+    conn = db_module.get_connection()
+    notifs = conn.execute("SELECT * FROM notifications WHERE user_id = ?", ("user-1",)).fetchall()
+    conn.close()
+
+    # Exactly one of the 6 tracked queries ("Pop Mart Labubu") should
+    # produce a title matching the "labubu" alias -- the rest (Crybaby,
+    # Skullpanda, Molly, Dimoo, blind box) shouldn't false-positive.
+    assert len(notifs) == 1
+    assert notifs[0]["series_id"] == "labubu-forest-party"
+    assert "Labubu" in notifs[0]["body"]
+
+
 def test_parse_items_extracts_fields():
     xml_text = _RSS_TEMPLATE.format(title="Labubu Forest Party restocked", guid="abc123")
     items = news_mod._parse_items(xml_text)

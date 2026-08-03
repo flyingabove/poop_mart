@@ -27,6 +27,7 @@ from xml.etree import ElementTree
 import httpx
 
 from backend.app.db.database import get_connection
+from backend.app.notifications.service import notify_followers_of_new_card
 
 _log = logging.getLogger(__name__)
 
@@ -130,6 +131,7 @@ async def ingest_google_news() -> int:
     try:
         series, figures = _load_catalog(conn)
         inserted = 0
+        newly_inserted: list[tuple[str, str | None, str]] = []  # (card_id, series_id, title)
 
         for query in _QUERIES:
             try:
@@ -152,12 +154,20 @@ async def ingest_google_news() -> int:
                         item["external_id"], item["created_at"],
                     ),
                 )
-                inserted += cur.rowcount
+                if cur.rowcount:
+                    inserted += 1
+                    newly_inserted.append((item["external_id"], series_id, item["title"]))
 
         conn.commit()
-        return inserted
     finally:
         conn.close()
+
+    # Notify after commit, on a separate connection, so a notification never
+    # references a feed card that isn't durably visible yet.
+    for card_id, series_id, title in newly_inserted:
+        notify_followers_of_new_card(card_id, series_id, title)
+
+    return inserted
 
 
 async def run_ingestion_loop(interval_seconds: int = DEFAULT_INTERVAL_SECONDS) -> None:
