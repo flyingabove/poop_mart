@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from backend.app.auth.dependencies import get_current_user
 from backend.app.auth.rate_limit import RateLimiter
 from backend.app.auth.service import AuthError, login, signup
+from backend.app.badges.service import get_badges
 
 router = APIRouter()
 
@@ -64,4 +65,4 @@ async def auth_login(body: LoginIn, request: Request):
 
 @router.get("/auth/me")
 async def auth_me(user: dict = Depends(get_current_user)):
-    return user
+    return {**user, "badges": get_badges(user["id"])}

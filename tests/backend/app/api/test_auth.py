@@ -59,6 +59,66 @@ def test_me_with_valid_token(client):
     assert r.json()["email"] == "me@example.com"
 
 
+def test_new_user_has_no_guide_contributor_or_top_reviewer_badge(client):
+    signup = client.post("/api/auth/signup", json={"email": "nobadges@example.com", "password": "hunter22"})
+    token = signup.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    badges = client.get("/api/auth/me", headers=headers).json()["badges"]
+    codes = [b["code"] for b in badges]
+    assert "guide_contributor" not in codes
+    assert "top_reviewer" not in codes
+
+
+def test_guide_contributor_badge_after_threshold_contributions(client):
+    signup = client.post("/api/auth/signup", json={"email": "badge-contrib@example.com", "password": "hunter22"})
+    headers = {"Authorization": f"Bearer {signup.json()['access_token']}"}
+
+    figures = ["lfp-forest-ranger", "lfp-berry-picker", "lfp-mushroom-nap"]
+    for figure_id in figures:
+        r = client.post(
+            "/api/guides/labubu-forest-party/contributions",
+            json={"figure_id": figure_id, "technique_type": "weight", "claim_text": "test contribution"},
+            headers=headers,
+        )
+        assert r.status_code == 201
+
+    badges = client.get("/api/auth/me", headers=headers).json()["badges"]
+    contributor_badge = next((b for b in badges if b["code"] == "guide_contributor"), None)
+    assert contributor_badge is not None
+    assert contributor_badge["label"] == "Guide Contributor"
+
+
+def test_no_guide_contributor_badge_below_threshold(client):
+    signup = client.post("/api/auth/signup", json={"email": "badge-under@example.com", "password": "hunter22"})
+    headers = {"Authorization": f"Bearer {signup.json()['access_token']}"}
+
+    client.post(
+        "/api/guides/labubu-forest-party/contributions",
+        json={"figure_id": "lfp-forest-ranger", "technique_type": "weight", "claim_text": "just one"},
+        headers=headers,
+    )
+
+    badges = client.get("/api/auth/me", headers=headers).json()["badges"]
+    assert not any(b["code"] == "guide_contributor" for b in badges)
+
+
+def test_top_reviewer_badge_after_threshold_reviews(client):
+    signup = client.post("/api/auth/signup", json={"email": "badge-reviewer@example.com", "password": "hunter22"})
+    headers = {"Authorization": f"Bearer {signup.json()['access_token']}"}
+
+    # Figures NOT used by test_reviews.py's exact-count assertions -- this
+    # suite shares a DB across the whole session, and cb-tears/
+    # lfp-forest-ranger/lm-vanilla/sp-nightwatch all have review_count == N
+    # assertions elsewhere that an extra review here would silently break.
+    for figure_id in ["lfp-berry-picker", "lfp-mushroom-nap", "lfp-firefly-watcher"]:
+        r = client.post(f"/api/figures/{figure_id}/reviews", json={"rating": 4}, headers=headers)
+        assert r.status_code == 201
+
+    badges = client.get("/api/auth/me", headers=headers).json()["badges"]
+    assert any(b["code"] == "top_reviewer" for b in badges)
+
+
 def test_login_rate_limited_after_too_many_failed_attempts(client):
     client.post("/api/auth/signup", json={"email": "ratelimit1@example.com", "password": "hunter22"})
     for _ in range(5):

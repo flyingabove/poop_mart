@@ -84,6 +84,7 @@
   .chip { background: var(--surface); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
   .chip.trust-official { color: var(--good); border-color: var(--good); }
   .chip.trust-unverified { color: var(--bad); border-color: var(--bad); }
+  .badge-chip { color: var(--accent); border-color: var(--accent); font-weight: 700; }
 
   #empty { text-align: center; color: var(--text-muted); padding: 40px 0; font-size: 14px; }
 
@@ -380,14 +381,20 @@ function renderAuthArea() {
 /* ---------------- My Collection screen ---------------- */
 
 async function openMyCollection() {
-  const [colRes, valRes, wishRes] = await Promise.all([
+  const [colRes, valRes, wishRes, meRes] = await Promise.all([
     apiFetch("/api/collection"),
     apiFetch("/api/collection/valuation"),
     apiFetch("/api/wishlist"),
+    apiFetch("/api/auth/me"),
   ]);
   const collection = (await colRes.json()).items;
   const valuation = await valRes.json();
   const wishlist = (await wishRes.json()).items;
+  const me = await meRes.json();
+
+  const badgesHtml = me.badges.length
+    ? me.badges.map((b) => `<span class="chip badge-chip" title="${b.description}">🏅 ${b.label}</span>`).join("")
+    : "";
 
   const collectionHtml = collection.length
     ? collection
@@ -425,6 +432,7 @@ async function openMyCollection() {
     <div class="detail-header">
       <h1>My Collection</h1>
       <div class="sub">${AUTH.email}</div>
+      ${badgesHtml ? `<div class="card-meta" style="margin-top:8px;">${badgesHtml}</div>` : ""}
     </div>
 
     <div class="price-box">
