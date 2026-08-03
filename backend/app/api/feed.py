@@ -20,6 +20,7 @@ async def get_feed(
     tab: str = Query("for_you"),
     card_type: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
+    region: Optional[str] = Query(None),
     user: Optional[dict] = Depends(get_optional_user),
 ):
     followed_series = followed_series_ids(user["id"]) if user else None
@@ -30,6 +31,7 @@ async def get_feed(
         limit=limit,
         followed_series=followed_series,
         followed_users=followed_creators,
+        region=region,
     )
     return {
         "tab": tab,

@@ -23,6 +23,37 @@ def test_feed_guides_tab_only_returns_shake_guide_cards(client):
     assert all(c["card_type"] == "shake_guide" for c in data["cards"])
 
 
+def test_feed_filters_by_region(client):
+    # FEED_SYSTEM_DESIGN.md's Tabs table documents Trending as "city/
+    # region filterable" -- region has always been stored per feed card
+    # and returned in every response, but nothing ever let a caller
+    # filter by it. f-whats-hot-1 is seeded with region="Korea".
+    r = client.get("/api/feed", params={"region": "Korea"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["cards"], "seed data should include at least one Korea-tagged card"
+    assert all(c["region"] == "Korea" for c in data["cards"])
+
+
+def test_feed_region_filter_excludes_other_regions(client):
+    data = client.get("/api/feed", params={"region": "Japan"}).json()
+    assert data["cards"], "seed data should include at least one Japan-tagged card"
+    assert not any(c["region"] == "Korea" for c in data["cards"])
+    # Exact match, not a Global-inclusive fallback -- a Global-tagged card
+    # (most real, dynamically-created content) should not leak into a
+    # specific-region filter.
+    assert not any(c["region"] == "Global" for c in data["cards"])
+
+
+def test_trending_tab_combines_with_region_filter(client):
+    # The doc specifically calls out Trending (not every tab) as region
+    # filterable -- confirm the two filters compose correctly together.
+    data = client.get("/api/feed", params={"tab": "trending", "region": "Korea"}).json()
+    assert data["cards"]
+    assert all(c["card_type"] in {"trending", "whats_hot", "price_change"} for c in data["cards"])
+    assert all(c["region"] == "Korea" for c in data["cards"])
+
+
 def test_anonymous_for_you_is_not_personalized(client):
     r = client.get("/api/feed", params={"tab": "for_you"})
     assert r.status_code == 200

@@ -61,6 +61,7 @@ def list_feed(
     limit: int = 50,
     followed_series: set[str] | None = None,
     followed_users: set[str] | None = None,
+    region: str | None = None,
 ) -> list[dict]:
     conn = get_connection()
     try:
@@ -74,6 +75,15 @@ def list_feed(
             clauses.append(f"fc.card_type IN ({placeholders})")
             params.extend(_TAB_CARD_TYPES[tab])
         # "for_you" / unrecognized tab: no filter, same as Trending unpersonalized.
+
+        if region:
+            # FEED_SYSTEM_DESIGN.md's Tabs table documents Trending as
+            # "city/region filterable" -- exact match against the card's
+            # own region tag, not a Global-inclusive fallback, so a
+            # region filter shows only content specifically about that
+            # region rather than diluting it with everything untagged.
+            clauses.append("fc.region = ?")
+            params.append(region)
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         rows = conn.execute(

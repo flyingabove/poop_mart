@@ -308,6 +308,7 @@
 </div>
 
 <div id="tabs"></div>
+<div id="region-filter" style="display:none;"></div>
 
 <main>
   <div id="feed-screen">
@@ -331,6 +332,11 @@ const TABS = [
   { id: "guides", label: "Guides" },
   { id: "marketplace", label: "Marketplace" },
 ];
+
+// Matches the region values actually used across seed.py's feed cards --
+// no dedicated "distinct regions" API endpoint exists yet, same
+// hardcoded-lookup shape as CARD_ICON/CARD_LABEL below.
+const REGIONS = ["China", "Japan", "Korea", "US", "Global"];
 
 const CARD_ICON = {
   trending: "📈", new_drop: "🆕", video: "🎥", community_post: "📷",
@@ -377,6 +383,7 @@ function clearAuth() {
 }
 
 let currentTab = "for_you";
+let currentRegion = "";
 
 const feedScreen = document.getElementById("feed-screen");
 const detailScreen = document.getElementById("detail");
@@ -1101,10 +1108,27 @@ function renderTabs() {
   tabsEl.querySelectorAll(".tab").forEach((el) =>
     el.addEventListener("click", () => {
       currentTab = el.dataset.tab;
+      if (currentTab !== "trending") currentRegion = "";
       renderTabs();
       loadFeed();
     })
   );
+
+  const regionFilterEl = document.getElementById("region-filter");
+  if (currentTab === "trending") {
+    regionFilterEl.style.display = "block";
+    regionFilterEl.innerHTML = `<select id="region-select">
+      <option value="">🌎 All regions</option>
+      ${REGIONS.map((r) => `<option value="${r}" ${r === currentRegion ? "selected" : ""}>${r}</option>`).join("")}
+    </select>`;
+    document.getElementById("region-select").addEventListener("change", (e) => {
+      currentRegion = e.target.value;
+      loadFeed();
+    });
+  } else {
+    regionFilterEl.style.display = "none";
+    regionFilterEl.innerHTML = "";
+  }
 }
 
 function timeAgo(unixSeconds) {
@@ -1144,7 +1168,8 @@ function cardHtml(card) {
 
 async function loadFeed() {
   feedEl.innerHTML = "";
-  const res = await apiFetch(`/api/feed?tab=${currentTab}`);
+  const regionParam = currentTab === "trending" && currentRegion ? `&region=${encodeURIComponent(currentRegion)}` : "";
+  const res = await apiFetch(`/api/feed?tab=${currentTab}${regionParam}`);
   const data = await res.json();
   emptyEl.style.display = data.cards.length ? "none" : "block";
   feedEl.innerHTML = data.cards.map(cardHtml).join("");
