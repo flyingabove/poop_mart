@@ -13,6 +13,16 @@ ever implemented (badges/service.py). Unlike guide_contributions, the
 `reviews` table has no seed data and never had hardcoded vote counts, so
 helpful/unhelpful counts here are computed purely from `review_votes` --
 no baseline-offset merging needed, unlike the guide-contribution case.
+
+Feed cards: FEED_SYSTEM_DESIGN.md lists "⭐ Reviews" as a first-class feed
+card type alongside "📷 Community Posts" -- the frontend has always had a
+CARD_ICON/CARD_LABEL entry for it and the seed data ships one example
+(f-review-1), but until now nothing ever created one for a *real* review,
+same gap Community Posts had before it was closed. Posting/updating a
+review now upserts a matching feed card (id `review:<user_id>:<figure_id>`,
+so editing a review updates its card in place rather than stacking
+duplicates -- same one-per-user-per-figure invariant the reviews table
+itself enforces), and removing a review removes its card.
 """
 import time
 
@@ -27,13 +37,18 @@ def _display_handle(email: str) -> str:
     return email.split("@")[0]
 
 
+def _review_card_id(user_id: str, figure_id: str) -> str:
+    return f"review:{user_id}:{figure_id}"
+
+
 def add_or_update_review(user_id: str, figure_id: str, rating: int, text: str | None) -> dict:
     if rating not in (1, 2, 3, 4, 5):
         raise ReviewError("rating must be an integer from 1 to 5")
 
     conn = get_connection()
     try:
-        if not conn.execute("SELECT id FROM figures WHERE id = ?", (figure_id,)).fetchone():
+        figure = conn.execute("SELECT name, series_id FROM figures WHERE id = ?", (figure_id,)).fetchone()
+        if not figure:
             raise ReviewError("figure not found")
         now = int(time.time())
         conn.execute(
@@ -41,6 +56,18 @@ def add_or_update_review(user_id: str, figure_id: str, rating: int, text: str | 
             "ON CONFLICT(user_id, figure_id) DO UPDATE SET "
             "rating = excluded.rating, text = excluded.text, created_at = excluded.created_at",
             (user_id, figure_id, rating, text, now),
+        )
+
+        card_id = _review_card_id(user_id, figure_id)
+        title = f"Rated {figure['name']} {rating}/5"
+        body = text or "No written review."
+        conn.execute(
+            "INSERT INTO feed_cards "
+            "(id, card_type, figure_id, series_id, title, body, source_trust_tier, region, user_id, created_at) "
+            "VALUES (?, 'review', ?, ?, ?, ?, 'community', 'Global', ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET "
+            "title = excluded.title, body = excluded.body, created_at = excluded.created_at",
+            (card_id, figure_id, figure["series_id"], title, body, user_id, now),
         )
         conn.commit()
         return {"figure_id": figure_id, "rating": rating, "text": text}
@@ -52,6 +79,7 @@ def remove_review(user_id: str, figure_id: str) -> bool:
     conn = get_connection()
     try:
         cur = conn.execute("DELETE FROM reviews WHERE user_id = ? AND figure_id = ?", (user_id, figure_id))
+        conn.execute("DELETE FROM feed_cards WHERE id = ?", (_review_card_id(user_id, figure_id),))
         conn.commit()
         return cur.rowcount > 0
     finally:

@@ -170,3 +170,63 @@ def test_my_review_vote_reflected_in_reviews_response(client):
     anon_data = client.get("/api/figures/lfp-acorn-hoarder/reviews").json()
     anon_mine = next(r for r in anon_data["reviews"] if r["id"] == review_id)
     assert anon_mine["my_vote"] is None
+
+
+# Feed-card tests use lfp-berry-picker, untouched by any other review test
+# in this file, and always filter by (figure_id, poster) rather than
+# asserting global counts to avoid collisions with seed data's own
+# f-review-1 card or other tests' cards.
+
+def test_review_creates_feed_card(client):
+    headers = _auth_headers(client, "reviewer-card1@example.com")
+    client.post(
+        "/api/figures/lfp-berry-picker/reviews",
+        json={"rating": 5, "text": "Adorable paint job"},
+        headers=headers,
+    )
+
+    data = client.get("/api/feed", params={"card_type": "review"}).json()
+    card = next(
+        c for c in data["cards"] if c["figure_id"] == "lfp-berry-picker" and c["poster"] == "reviewer-card1"
+    )
+    assert card["title"] == "Rated Berry Picker 5/5"
+    assert card["body"] == "Adorable paint job"
+    assert card["poster_id"]
+
+
+def test_review_without_text_gets_fallback_card_body(client):
+    headers = _auth_headers(client, "reviewer-card2@example.com")
+    client.post("/api/figures/lfp-berry-picker/reviews", json={"rating": 3}, headers=headers)
+
+    data = client.get("/api/feed", params={"card_type": "review"}).json()
+    card = next(
+        c for c in data["cards"] if c["figure_id"] == "lfp-berry-picker" and c["poster"] == "reviewer-card2"
+    )
+    assert card["body"] == "No written review."
+
+
+def test_updating_review_updates_card_not_duplicates(client):
+    headers = _auth_headers(client, "reviewer-card3@example.com")
+    client.post("/api/figures/lfp-berry-picker/reviews", json={"rating": 2, "text": "meh"}, headers=headers)
+    client.post(
+        "/api/figures/lfp-berry-picker/reviews", json={"rating": 5, "text": "actually great"}, headers=headers
+    )
+
+    data = client.get("/api/feed", params={"card_type": "review"}).json()
+    mine = [
+        c for c in data["cards"] if c["figure_id"] == "lfp-berry-picker" and c["poster"] == "reviewer-card3"
+    ]
+    assert len(mine) == 1
+    assert mine[0]["title"] == "Rated Berry Picker 5/5"
+    assert mine[0]["body"] == "actually great"
+
+
+def test_deleting_review_removes_its_feed_card(client):
+    headers = _auth_headers(client, "reviewer-card4@example.com")
+    client.post("/api/figures/lfp-berry-picker/reviews", json={"rating": 4}, headers=headers)
+    client.delete("/api/figures/lfp-berry-picker/reviews", headers=headers)
+
+    data = client.get("/api/feed", params={"card_type": "review"}).json()
+    assert not any(
+        c["figure_id"] == "lfp-berry-picker" and c["poster"] == "reviewer-card4" for c in data["cards"]
+    )
