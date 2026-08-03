@@ -181,7 +181,7 @@ def seed_if_empty() -> None:
 
         contrib_rows = []
         contrib_id_seed = 0
-        for figure_id, (weight_range, sound, _notes) in _SHAKE_SIGNATURES.items():
+        for figure_id, (weight_range, sound, notes) in _SHAKE_SIGNATURES.items():
             n = _GUIDE_CONTRIBUTIONS[figure_id]
             for i in range(n):
                 contrib_id_seed += 1
@@ -196,6 +196,21 @@ def seed_if_empty() -> None:
                     None,
                     now - (n - i) * 3 * 3600,
                 ))
+            # A "seam" claim carries each figure's distinguishing_notes text --
+            # previously written here but never inserted as an actual
+            # contribution, so it never reached get_guide()'s signature output.
+            contrib_id_seed += 1
+            contrib_rows.append((
+                "guide-labubu-forest-party",
+                figure_id,
+                "seam",
+                notes,
+                None,
+                2,
+                0,
+                None,
+                now - _DAY,
+            ))
         conn.executemany(
             "INSERT INTO guide_contributions (guide_id, figure_id, technique_type, claim_text, weight_range_g, "
             "upvotes, downvotes, video_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

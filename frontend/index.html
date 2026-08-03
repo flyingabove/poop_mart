@@ -1487,7 +1487,7 @@ async function openSeries(seriesId) {
       <div class="signature">
         <div class="sig-row"><span class="sig-name">${s.figure_name}</span><span class="sig-conf">${s.confidence_score}% confidence · ${s.contribution_count} contributions</span></div>
         <div class="conf-bar"><div class="conf-bar-fill" style="width:${s.confidence_score}%"></div></div>
-        <div class="sig-detail">${s.weight_range_g ? "⚖️ " + s.weight_range_g : ""} ${s.sound_description ? " · 🔊 " + s.sound_description : ""}</div>
+        <div class="sig-detail">${s.weight_range_g ? "⚖️ " + s.weight_range_g : ""} ${s.sound_description ? " · 🔊 " + s.sound_description : ""} ${s.distinguishing_notes ? " · " + s.distinguishing_notes : ""}</div>
       </div>`
         )
         .join("")

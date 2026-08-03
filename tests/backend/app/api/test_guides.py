@@ -101,6 +101,81 @@ def test_add_contribution_without_video_url_is_null(client):
     assert mine["video_url"] is None
 
 
+def test_box_code_and_seam_contributions_appear_as_distinguishing_notes(client):
+    # SHAKE_GUIDES_DESIGN.md's figure_signatures structure documents a
+    # distinguishing_notes field specifically for seam/box-code tells --
+    # get_guide() previously only ever surfaced weight_range_g and
+    # sound_description in a signature, so a fully-submittable,
+    # confidence-counted box_code or seam contribution's actual claim
+    # content never appeared anywhere in the guide's headline signature
+    # view (only in the raw, unaggregated contributions list below it).
+    # crybaby-crying-again has no seeded guide at all and isn't touched by
+    # any other test in this file, so it starts genuinely clean.
+    headers = _auth_headers(client, "contributor-boxcode@example.com")
+    r = client.post(
+        "/api/guides/crybaby-crying-again/contributions",
+        json={"figure_id": "cb-tears", "technique_type": "box_code", "claim_text": "box code ends in 7F"},
+        headers=headers,
+    )
+    assert r.status_code == 201
+    r2 = client.post(
+        "/api/guides/crybaby-crying-again/contributions",
+        json={
+            "figure_id": "cb-tears",
+            "technique_type": "seam",
+            "claim_text": "sticker seam slightly offset on the left edge",
+        },
+        headers=headers,
+    )
+    assert r2.status_code == 201
+
+    data = client.get("/api/guides/crybaby-crying-again").json()
+    sig = next(s for s in data["figure_signatures"] if s["figure_id"] == "cb-tears")
+    assert sig["distinguishing_notes"] is not None
+    assert "box code ends in 7F" in sig["distinguishing_notes"]
+    assert "sticker seam slightly offset on the left edge" in sig["distinguishing_notes"]
+    # no weight/sound claim was ever made for this figure -- those fields stay null.
+    assert sig["weight_range_g"] is None
+    assert sig["sound_description"] is None
+
+
+def test_weight_only_signature_has_no_distinguishing_notes(client):
+    # A figure signature built only from weight/sound claims shouldn't
+    # gain a phantom distinguishing_notes value -- regression guard for
+    # the box_code/seam aggregation above. skullpanda-city-of-night also
+    # has no seeded guide and isn't touched elsewhere in this file.
+    headers = _auth_headers(client, "contributor-weightonly@example.com")
+    r = client.post(
+        "/api/guides/skullpanda-city-of-night/contributions",
+        json={
+            "figure_id": "sp-nightwatch",
+            "technique_type": "weight",
+            "claim_text": "51g on my scale",
+            "weight_range_g": "50-52g",
+        },
+        headers=headers,
+    )
+    assert r.status_code == 201
+
+    data = client.get("/api/guides/skullpanda-city-of-night").json()
+    sig = next(s for s in data["figure_signatures"] if s["figure_id"] == "sp-nightwatch")
+    assert sig["distinguishing_notes"] is None
+
+
+def test_seeded_distinguishing_notes_now_reach_the_signature(client):
+    # The seed data always wrote a per-figure distinguishing_notes string
+    # (backend/app/db/seed.py's _SHAKE_SIGNATURES) but previously discarded
+    # it (`_notes`, unused) rather than inserting it as a real contribution
+    # -- so even the flagship, fully-populated Labubu Forest Party guide
+    # never actually exercised this field. Confirms the seed fix, not just
+    # the aggregation logic: lfp-forest-ranger's known seed text should now
+    # show up verbatim.
+    data = client.get("/api/guides/labubu-forest-party").json()
+    sig = next(s for s in data["figure_signatures"] if s["figure_id"] == "lfp-forest-ranger")
+    assert sig["distinguishing_notes"] is not None
+    assert "Solid pose, no loose parts." in sig["distinguishing_notes"]
+
+
 def test_seeded_contributions_have_no_contributor(client):
     # Seed-era contributions predate auth and are never backfilled with a user.
     data = client.get("/api/guides/labubu-forest-party").json()

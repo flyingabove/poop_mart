@@ -91,6 +91,13 @@ def get_guide(series_id: str, user_id: str | None = None) -> dict | None:
                 continue
             weight_claim = next((c for c in claims if c["technique_type"] == "weight"), None)
             sound_claim = next((c for c in claims if c["technique_type"] == "sound"), None)
+            note_claims = [c for c in claims if c["technique_type"] in ("box_code", "seam")]
+            note_icons = {"box_code": "🔢", "seam": "✂️"}
+            distinguishing_notes = (
+                " · ".join(f"{note_icons[c['technique_type']]} {c['claim_text']}" for c in note_claims)
+                if note_claims
+                else None
+            )
             net_votes = 0
             for c in claims:
                 up, down = _total_votes(c)
@@ -100,6 +107,7 @@ def get_guide(series_id: str, user_id: str | None = None) -> dict | None:
                 "figure_name": fig["name"],
                 "weight_range_g": weight_claim["weight_range_g"] if weight_claim else None,
                 "sound_description": sound_claim["claim_text"] if sound_claim else None,
+                "distinguishing_notes": distinguishing_notes,
                 "contribution_count": len(claims),
                 "confidence_score": _confidence(len(claims), net_votes),
             })
