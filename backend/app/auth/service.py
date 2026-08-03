@@ -52,6 +52,26 @@ def login(email: str, password: str) -> dict:
         conn.close()
 
 
+def change_password(user_id: str, current_password: str, new_password: str) -> None:
+    if len(new_password) < 8:
+        raise AuthError("password must be at least 8 characters")
+
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row or not verify_password(current_password, row["password_salt"], row["password_hash"]):
+            raise AuthError("current password is incorrect")
+
+        salt, pw_hash = hash_password(new_password)
+        conn.execute(
+            "UPDATE users SET password_salt = ?, password_hash = ? WHERE id = ?",
+            (salt, pw_hash, user_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def get_user(user_id: str) -> dict | None:
     conn = get_connection()
     try:

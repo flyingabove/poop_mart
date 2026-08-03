@@ -447,6 +447,19 @@ async function openMyCollection() {
       <div class="section-title">Wishlist (${wishlist.length})</div>
       ${wishlistHtml}
     </div>
+
+    <div class="guide-box">
+      <div class="section-title">Account</div>
+      <form class="contrib-form" id="change-password-form" style="margin-top:0; padding-top:0; border-top:none;">
+        <label>Current password</label>
+        <input type="password" name="current_password" required autocomplete="current-password" />
+        <label>New password</label>
+        <input type="password" name="new_password" required minlength="8" autocomplete="new-password" />
+        <button type="submit">Change password</button>
+        <div class="form-note" id="change-password-note">Password changed.</div>
+        <div id="change-password-error" style="color:var(--bad); font-size:12.5px; margin-top:8px; display:none;"></div>
+      </form>
+    </div>
   `);
 
   const detailContent = document.getElementById("detail-content");
@@ -470,6 +483,30 @@ async function openMyCollection() {
       openFigure(el.dataset.figureId);
     })
   );
+
+  const changePasswordForm = document.getElementById("change-password-form");
+  const changePasswordError = document.getElementById("change-password-error");
+  changePasswordForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    changePasswordError.style.display = "none";
+    const fd = new FormData(changePasswordForm);
+    const res = await apiFetch("/api/auth/change-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        current_password: fd.get("current_password"),
+        new_password: fd.get("new_password"),
+      }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById("change-password-note").classList.add("show");
+      changePasswordForm.reset();
+    } else {
+      changePasswordError.textContent = data.detail || "Could not change password.";
+      changePasswordError.style.display = "block";
+    }
+  });
 }
 
 /* ---------------- Notifications ---------------- */

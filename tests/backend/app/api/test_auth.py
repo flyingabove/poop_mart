@@ -177,3 +177,55 @@ def test_signup_rate_limited_after_too_many_attempts(client):
 
     r = client.post("/api/auth/signup", json={"email": "burst-over-limit@example.com", "password": "hunter22"})
     assert r.status_code == 429
+
+
+def test_change_password_requires_auth(client):
+    r = client.post("/api/auth/change-password", json={"current_password": "hunter22", "new_password": "newpass123"})
+    assert r.status_code == 401
+
+
+def test_change_password_success_and_old_password_stops_working(client):
+    signup = client.post("/api/auth/signup", json={"email": "changepw1@example.com", "password": "hunter22"})
+    headers = {"Authorization": f"Bearer {signup.json()['access_token']}"}
+
+    r = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "hunter22", "new_password": "newpassword1"},
+        headers=headers,
+    )
+    assert r.status_code == 200
+    assert r.json()["changed"] is True
+
+    old_login = client.post("/api/auth/login", json={"email": "changepw1@example.com", "password": "hunter22"})
+    assert old_login.status_code == 401
+
+    new_login = client.post("/api/auth/login", json={"email": "changepw1@example.com", "password": "newpassword1"})
+    assert new_login.status_code == 200
+
+
+def test_change_password_wrong_current_password_rejected(client):
+    signup = client.post("/api/auth/signup", json={"email": "changepw2@example.com", "password": "hunter22"})
+    headers = {"Authorization": f"Bearer {signup.json()['access_token']}"}
+
+    r = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "totally-wrong", "new_password": "newpassword1"},
+        headers=headers,
+    )
+    assert r.status_code == 422
+
+    # original password still works -- nothing changed
+    login = client.post("/api/auth/login", json={"email": "changepw2@example.com", "password": "hunter22"})
+    assert login.status_code == 200
+
+
+def test_change_password_rejects_short_new_password(client):
+    signup = client.post("/api/auth/signup", json={"email": "changepw3@example.com", "password": "hunter22"})
+    headers = {"Authorization": f"Bearer {signup.json()['access_token']}"}
+
+    r = client.post(
+        "/api/auth/change-password",
+        json={"current_password": "hunter22", "new_password": "short"},
+        headers=headers,
+    )
+    assert r.status_code == 422

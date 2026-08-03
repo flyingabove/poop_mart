@@ -3,7 +3,7 @@ from pydantic import BaseModel
 
 from backend.app.auth.dependencies import get_current_user
 from backend.app.auth.rate_limit import RateLimiter
-from backend.app.auth.service import AuthError, login, signup
+from backend.app.auth.service import AuthError, change_password, login, signup
 from backend.app.badges.service import get_badges
 
 router = APIRouter()
@@ -27,6 +27,11 @@ class SignupIn(BaseModel):
 class LoginIn(BaseModel):
     email: str
     password: str
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str
 
 
 @router.post("/auth/signup", status_code=201)
@@ -66,3 +71,12 @@ async def auth_login(body: LoginIn, request: Request):
 @router.get("/auth/me")
 async def auth_me(user: dict = Depends(get_current_user)):
     return {**user, "badges": get_badges(user["id"])}
+
+
+@router.post("/auth/change-password")
+async def auth_change_password(body: ChangePasswordIn, user: dict = Depends(get_current_user)):
+    try:
+        change_password(user["id"], body.current_password, body.new_password)
+    except AuthError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return {"changed": True}
