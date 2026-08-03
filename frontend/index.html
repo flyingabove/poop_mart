@@ -1383,6 +1383,12 @@ searchInput.addEventListener("input", () => {
     const hits = [
       ...data.series.map((s) => ({ kind: "series", id: s.id, label: s.name, sub: s.brand_line })),
       ...data.figures.map((f) => ({ kind: "figure", id: f.id, label: f.name, sub: "figure" })),
+      ...data.posts.map((p) => ({
+        kind: "post",
+        id: p.figure_id,
+        label: p.title,
+        sub: `post on ${p.figure_name}${p.poster ? " by @" + p.poster : ""}`,
+      })),
     ];
     if (!hits.length) {
       searchResults.innerHTML = `<div class="search-hit">No matches for "${q}"</div>`;

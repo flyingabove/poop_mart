@@ -44,3 +44,38 @@ def test_search_unrelated_query_returns_nothing(client):
     data = r.json()
     assert data["series"] == []
     assert data["figures"] == []
+    assert data["posts"] == []
+
+
+def _auth_headers(client, email):
+    r = client.post("/api/auth/signup", json={"email": email, "password": "hunter2222"})
+    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+
+
+def test_search_matches_community_post_title(client):
+    headers = _auth_headers(client, "search-poster-a@example.com")
+    client.post(
+        "/api/feed/posts",
+        json={"figure_id": "lfp-forest-ranger", "title": "Zzyzxquest99 unboxing", "body": "so happy"},
+        headers=headers,
+    )
+
+    r = client.get("/api/search", params={"q": "zzyzxquest99"})
+    assert r.status_code == 200
+    hit = next(p for p in r.json()["posts"] if p["title"] == "Zzyzxquest99 unboxing")
+    assert hit["figure_id"] == "lfp-forest-ranger"
+    assert hit["figure_name"] == "Forest Ranger"
+    assert hit["poster"] == "search-poster-a"
+
+
+def test_search_matches_community_post_body(client):
+    headers = _auth_headers(client, "search-poster-b@example.com")
+    client.post(
+        "/api/feed/posts",
+        json={"figure_id": "lfp-forest-ranger", "title": "Another pull", "body": "found a Wobbleflarp42 today"},
+        headers=headers,
+    )
+
+    r = client.get("/api/search", params={"q": "wobbleflarp42"})
+    assert r.status_code == 200
+    assert any(p["title"] == "Another pull" for p in r.json()["posts"])

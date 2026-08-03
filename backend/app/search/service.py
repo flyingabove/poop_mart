@@ -12,6 +12,13 @@ translation table, not a string-similarity trick -- and isn't attempted
 here. The real design (per TECH_STACK_AND_INFRASTRUCTURE.md) is
 Elasticsearch/OpenSearch once there's enough content volume to justify it;
 this is the honest, dependency-free v1 in the meantime.
+
+The Index section also names "free-text search over community posts,
+reviews, and guide content" -- only posts are implemented so far
+(_search_posts, plain substring match, no fuzzy fallback since post
+text is long-form and typos matter far less than in a short figure
+name). Reviews and guide contribution text are the same real gap,
+left for a follow-up rather than done sloppily in the same pass.
 """
 import difflib
 
@@ -60,6 +67,30 @@ def _fuzzy_matches(
     return [s for _, s in scored_series], [f for _, f in scored_figures]
 
 
+def _search_posts(conn, query: str, limit: int) -> list[dict]:
+    like = f"%{query.lower()}%"
+    rows = conn.execute(
+        "SELECT fc.id, fc.title, fc.figure_id, f.name AS figure_name, u.email AS poster_email "
+        "FROM feed_cards fc "
+        "JOIN figures f ON f.id = fc.figure_id "
+        "LEFT JOIN users u ON u.id = fc.user_id "
+        "WHERE fc.card_type = 'community_post' "
+        "AND (LOWER(fc.title) LIKE ? OR LOWER(fc.body) LIKE ?) "
+        "ORDER BY fc.created_at DESC LIMIT ?",
+        (like, like, limit),
+    ).fetchall()
+    return [
+        {
+            "id": r["id"],
+            "title": r["title"],
+            "figure_id": r["figure_id"],
+            "figure_name": r["figure_name"],
+            "poster": r["poster_email"].split("@")[0] if r["poster_email"] else None,
+        }
+        for r in rows
+    ]
+
+
 def search(query: str, limit: int = 20) -> dict:
     conn = get_connection()
     try:
@@ -77,6 +108,7 @@ def search(query: str, limit: int = 20) -> dict:
         return {
             "series": [{"id": s["id"], "name": s["name"], "brand_line": s["brand_line"]} for s in all_series],
             "figures": [{"id": f["id"], "name": f["name"], "series_id": f["series_id"]} for f in all_figures],
+            "posts": _search_posts(conn, query, limit),
         }
     finally:
         conn.close()
