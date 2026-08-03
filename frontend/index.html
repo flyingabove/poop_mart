@@ -383,18 +383,20 @@ function renderAuthArea() {
 /* ---------------- My Collection screen ---------------- */
 
 async function openMyCollection() {
-  const [colRes, valRes, wishRes, meRes, rankingsRes] = await Promise.all([
+  const [colRes, valRes, wishRes, meRes, rankingsRes, prefsRes] = await Promise.all([
     apiFetch("/api/collection"),
     apiFetch("/api/collection/valuation"),
     apiFetch("/api/wishlist"),
     apiFetch("/api/auth/me"),
     apiFetch("/api/rankings"),
+    apiFetch("/api/notifications/preferences"),
   ]);
   const collection = (await colRes.json()).items;
   const valuation = await valRes.json();
   const wishlist = (await wishRes.json()).items;
   const me = await meRes.json();
   const rankings = (await rankingsRes.json()).rankings;
+  const preferences = (await prefsRes.json()).preferences;
 
   const badgesHtml = me.badges.length
     ? me.badges.map((b) => `<span class="chip badge-chip" title="${b.description}">🏅 ${b.label}</span>`).join("")
@@ -477,6 +479,18 @@ async function openMyCollection() {
     </div>
 
     <div class="guide-box">
+      <div class="section-title">Notification preferences</div>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400; margin-bottom:10px;">
+        <input type="checkbox" id="pref-followed_series_update" ${preferences.followed_series_update ? "checked" : ""} />
+        Updates from series you follow
+      </label>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
+        <input type="checkbox" id="pref-followed_user_post" ${preferences.followed_user_post ? "checked" : ""} />
+        Posts from collectors you follow
+      </label>
+    </div>
+
+    <div class="guide-box">
       <div class="section-title">Account</div>
       <form class="contrib-form" id="change-password-form" style="margin-top:0; padding-top:0; border-top:none;">
         <label>Current password</label>
@@ -512,6 +526,16 @@ async function openMyCollection() {
       else openFigure(el.dataset.figureId);
     })
   );
+
+  ["followed_series_update", "followed_user_post"].forEach((category) => {
+    document.getElementById(`pref-${category}`).addEventListener("change", async (e) => {
+      await apiFetch(`/api/notifications/preferences/${category}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: e.target.checked }),
+      });
+    });
+  });
 
   const newRankingForm = document.getElementById("new-ranking-form");
   newRankingForm.addEventListener("submit", async (e) => {

@@ -209,6 +209,14 @@ CREATE TABLE IF NOT EXISTS user_follows (
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_follows_follower ON user_follows(follower_id);
+
+CREATE TABLE IF NOT EXISTS notification_preferences (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         TEXT NOT NULL REFERENCES users(id),
+    category        TEXT NOT NULL,
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    UNIQUE(user_id, category)
+);
 """
 
 

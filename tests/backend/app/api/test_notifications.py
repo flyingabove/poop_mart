@@ -132,3 +132,69 @@ def test_post_by_user_with_no_followers_is_noop(client):
     # the poster shouldn't notify themselves
     data = client.get("/api/notifications", headers=headers).json()
     assert not any(n["body"] == "Solo pull" for n in data["notifications"])
+
+
+def test_default_preferences_are_enabled(client):
+    _id, headers = _signup(client, "notif-pref-default@example.com")
+    data = client.get("/api/notifications/preferences", headers=headers).json()
+    assert data["preferences"] == {"followed_series_update": True, "followed_user_post": True}
+
+
+def test_preferences_require_auth(client):
+    assert client.get("/api/notifications/preferences").status_code == 401
+    assert (
+        client.put("/api/notifications/preferences/followed_user_post", json={"enabled": False}).status_code == 401
+    )
+
+
+def test_set_preference_persists(client):
+    _id, headers = _signup(client, "notif-pref-set@example.com")
+    r = client.put("/api/notifications/preferences/followed_user_post", json={"enabled": False}, headers=headers)
+    assert r.status_code == 200
+    assert r.json() == {"category": "followed_user_post", "enabled": False}
+
+    data = client.get("/api/notifications/preferences", headers=headers).json()
+    assert data["preferences"]["followed_user_post"] is False
+    assert data["preferences"]["followed_series_update"] is True  # untouched
+
+
+def test_set_unknown_category_422s(client):
+    _id, headers = _signup(client, "notif-pref-bad@example.com")
+    r = client.put("/api/notifications/preferences/not_a_category", json={"enabled": False}, headers=headers)
+    assert r.status_code == 422
+
+
+def test_disabling_series_update_preference_suppresses_notification(client):
+    _opted_out_id, opted_out_headers = _signup(client, "notif-pref-optout-series@example.com")
+    _opted_in_id, opted_in_headers = _signup(client, "notif-pref-optin-series@example.com")
+    client.put(
+        "/api/notifications/preferences/followed_series_update", json={"enabled": False}, headers=opted_out_headers
+    )
+    client.post("/api/follows/series/labubu-forest-party", headers=opted_out_headers)
+    client.post("/api/follows/series/labubu-forest-party", headers=opted_in_headers)
+
+    notify_followers_of_new_card("test-card-pref-1", "labubu-forest-party", "Preference test headline")
+
+    opted_out_data = client.get("/api/notifications", headers=opted_out_headers).json()
+    assert not any(n["body"] == "Preference test headline" for n in opted_out_data["notifications"])
+
+    opted_in_data = client.get("/api/notifications", headers=opted_in_headers).json()
+    assert any(n["body"] == "Preference test headline" for n in opted_in_data["notifications"])
+
+
+def test_disabling_user_post_preference_suppresses_notification(client):
+    _b_id, b_headers = _signup(client, "notif-pref-poster@example.com")
+    _opted_out_id, opted_out_headers = _signup(client, "notif-pref-optout-post@example.com")
+    client.put(
+        "/api/notifications/preferences/followed_user_post", json={"enabled": False}, headers=opted_out_headers
+    )
+    client.post(f"/api/follows/users/{_b_id}", headers=opted_out_headers)
+
+    client.post(
+        "/api/feed/posts",
+        json={"figure_id": "lfp-forest-ranger", "title": "Muted pull", "body": "hi"},
+        headers=b_headers,
+    )
+
+    data = client.get("/api/notifications", headers=opted_out_headers).json()
+    assert not any(n["body"] == "Muted pull" for n in data["notifications"])
