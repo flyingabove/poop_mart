@@ -721,6 +721,7 @@ async function openUserProfile(userId) {
           <div class="list-item-name">${p.title}</div>
           <div class="list-item-sub">${p.figure_name} · ${timeAgo(p.created_at)}</div>
         </div>
+        ${isSelf ? `<button class="remove-btn" data-action="remove-post" data-post-id="${p.id}">Remove</button>` : ""}
       </div>`
         )
         .join("")
@@ -773,9 +774,17 @@ async function openUserProfile(userId) {
 
   const detailContent = document.getElementById("detail-content");
   detailContent.querySelectorAll(".list-item").forEach((el) =>
-    el.addEventListener("click", () => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".remove-btn")) return;
       if (el.dataset.rankingId) openRanking(el.dataset.rankingId);
       else openFigure(el.dataset.figureId);
+    })
+  );
+  detailContent.querySelectorAll('[data-action="remove-post"]').forEach((el) =>
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await apiFetch(`/api/feed/posts/${el.dataset.postId}`, { method: "DELETE" });
+      openUserProfile(userId);
     })
   );
 

@@ -150,3 +150,16 @@ def create_community_post(user_id: str, figure_id: str, title: str, body: str) -
         return {"id": card_id, "figure_id": figure_id, "series_id": figure["series_id"], "created_at": now}
     finally:
         conn.close()
+
+
+def remove_post(user_id: str, post_id: str) -> bool:
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "DELETE FROM feed_cards WHERE id = ? AND card_type = 'community_post' AND user_id = ?",
+            (post_id, user_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()

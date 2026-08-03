@@ -117,3 +117,52 @@ def test_community_post_participates_in_personalization(client):
     data = client.get("/api/feed", params={"tab": "for_you"}, headers=headers).json()
     mine = next(c for c in data["cards"] if c["id"] == post_id)
     assert mine["followed"] is True
+
+
+def test_delete_own_community_post(client):
+    headers = _auth_headers(client, "poster6@example.com")
+    post_id = client.post(
+        "/api/feed/posts",
+        json={"figure_id": "lfp-forest-ranger", "title": "To be deleted", "body": "bye"},
+        headers=headers,
+    ).json()["id"]
+
+    r = client.delete(f"/api/feed/posts/{post_id}", headers=headers)
+    assert r.status_code == 200
+
+    data = client.get("/api/feed", params={"card_type": "community_post"}).json()
+    assert not any(c["id"] == post_id for c in data["cards"])
+
+
+def test_delete_community_post_requires_auth(client):
+    headers = _auth_headers(client, "poster7@example.com")
+    post_id = client.post(
+        "/api/feed/posts",
+        json={"figure_id": "lfp-forest-ranger", "title": "No auth delete", "body": "x"},
+        headers=headers,
+    ).json()["id"]
+
+    r = client.delete(f"/api/feed/posts/{post_id}")
+    assert r.status_code == 401
+
+
+def test_cannot_delete_other_users_post(client):
+    headers_a = _auth_headers(client, "poster8a@example.com")
+    headers_b = _auth_headers(client, "poster8b@example.com")
+    post_id = client.post(
+        "/api/feed/posts",
+        json={"figure_id": "lfp-forest-ranger", "title": "A's post", "body": "mine"},
+        headers=headers_a,
+    ).json()["id"]
+
+    r = client.delete(f"/api/feed/posts/{post_id}", headers=headers_b)
+    assert r.status_code == 404
+
+    data = client.get("/api/feed", params={"card_type": "community_post"}).json()
+    assert any(c["id"] == post_id for c in data["cards"])
+
+
+def test_delete_unknown_post_404s(client):
+    headers = _auth_headers(client, "poster9@example.com")
+    r = client.delete("/api/feed/posts/post:does-not-exist", headers=headers)
+    assert r.status_code == 404

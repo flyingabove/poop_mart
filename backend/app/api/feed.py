@@ -40,3 +40,10 @@ async def post_community_post(body: CommunityPostIn, user: dict = Depends(get_cu
         raise HTTPException(status_code=422, detail=str(e))
     notify_followers_of_user_post(user["id"], post["id"], body.figure_id, post["series_id"], body.title)
     return post
+
+
+@router.delete("/feed/posts/{post_id}")
+async def delete_community_post(post_id: str, user: dict = Depends(get_current_user)):
+    if not feed_service.remove_post(user["id"], post_id):
+        raise HTTPException(status_code=404, detail="post not found")
+    return {"id": post_id, "removed": True}
