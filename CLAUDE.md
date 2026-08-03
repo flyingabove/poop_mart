@@ -104,8 +104,14 @@ railway logs
 | Variable | Purpose | Required? |
 |----------|---------|------------|
 | `DATABASE_URL` / SQLite fallback | Not set → uses `/data/poop_mart.db` (Railway volume) or `./data/poop_mart.db` locally. | No |
+| `DISABLE_INGESTION` | Set to `1` to skip starting the background Google News ingestion loop (tests always set this — see `tests/conftest.py`). Leave unset in production so the feed keeps getting new material. | No |
+| `INGEST_INTERVAL_SECONDS` | Override the ingestion poll interval (default 600s). | No |
 | `OPENAI_API_KEY` | Only needed once `backend/app/ai/` is wired to a real model — unused by the current seeded-data MVP. | No (yet) |
 | `JWT_SECRET` | Only needed once `backend/app/auth/` is implemented. | No (yet) |
+
+### Continuous ingestion
+
+`backend/app/ingestion/news.py` polls Google News RSS in a background task (started in `main.py`'s lifespan, immediately on startup and then every `INGEST_INTERVAL_SECONDS`) and inserts new Pop Mart articles as `regional_news` feed cards — this is what keeps the feed populated with new material without a redeploy. See [`documentation/model_output_docs/TREND_DETECTION_DESIGN.md`](documentation/model_output_docs/TREND_DETECTION_DESIGN.md) for why Google News RSS was chosen over Reddit (Reddit's public JSON endpoint hard-blocks datacenter IPs).
 
 Keep this table in sync with reality — if a module in `ingestion/`, `ai/`, or `auth/` starts making real external calls, add its required env vars here **and** to `.env.example` before merging.
 

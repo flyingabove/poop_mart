@@ -1,3 +1,5 @@
+import asyncio
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.app.config.settings import APP_TITLE, APP_VERSION, CORS_ORIGINS
 from backend.app.db.database import init_db
 from backend.app.db.seed import seed_if_empty
+from backend.app.ingestion.news import run_ingestion_loop, DEFAULT_INTERVAL_SECONDS
 
 from backend.app.api.health import router as health_router
 from backend.app.api.feed import router as feed_router
@@ -25,7 +28,16 @@ _IMG_DIR = Path(__file__).parent.parent.parent / "frontend" / "img"
 async def lifespan(app: FastAPI):
     init_db()
     seed_if_empty()
+
+    ingestion_task = None
+    if os.getenv("DISABLE_INGESTION") != "1":
+        interval = int(os.getenv("INGEST_INTERVAL_SECONDS", str(DEFAULT_INTERVAL_SECONDS)))
+        ingestion_task = asyncio.create_task(run_ingestion_loop(interval))
+
     yield
+
+    if ingestion_task:
+        ingestion_task.cancel()
 
 
 app = FastAPI(title=APP_TITLE, version=APP_VERSION, lifespan=lifespan)

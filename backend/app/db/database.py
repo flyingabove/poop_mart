@@ -42,11 +42,15 @@ CREATE TABLE IF NOT EXISTS feed_cards (
     source_counts_json  TEXT,
     sentiment_score     REAL,
     region              TEXT,
+    external_id         TEXT,
     created_at          INTEGER NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_feed_created ON feed_cards(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_feed_type ON feed_cards(card_type);
+-- Partial unique index: seed cards have no external_id (NULL, unconstrained);
+-- ingested cards dedup on it so re-polling the same article is a no-op.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_external_id ON feed_cards(external_id) WHERE external_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS price_snapshots (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,11 +91,30 @@ CREATE INDEX IF NOT EXISTS idx_contrib_guide ON guide_contributions(guide_id);
 """
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns that predate a given deploy to an already-existing DB file.
+
+    CREATE TABLE IF NOT EXISTS never alters an existing table, so a volume
+    seeded before a schema change (e.g. the live Railway beta/prod DBs) needs
+    an explicit ALTER TABLE. Keep this additive and idempotent — check first,
+    only add what's missing.
+    """
+    cols = {row["name"] for row in conn.execute("PRAGMA table_info(feed_cards)")}
+    if "external_id" not in cols:
+        conn.execute("ALTER TABLE feed_cards ADD COLUMN external_id TEXT")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_external_id "
+            "ON feed_cards(external_id) WHERE external_id IS NOT NULL"
+        )
+
+
 def init_db() -> None:
-    """Create tables if they don't exist. Called once at startup."""
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    """Create tables if they don't exist, then migrate. Called once at startup."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    _migrate(conn)
     conn.commit()
     conn.close()
 
