@@ -135,3 +135,35 @@ def test_editing_acquired_at_updates_it(client):
     items = client.get("/api/collection", headers=headers).json()["items"]
     item = next(i for i in items if i["figure_id"] == "lfp-forest-ranger")
     assert item["acquired_at"] == 1650000000
+
+
+def test_editing_photo_url_preserves_condition_and_acquired_at(client):
+    # photo_url is the last of the CollectionItem fields
+    # USER_PROFILES_AND_SOCIAL_DESIGN.md documents ("optional photo") --
+    # accepting a plain external link needs no upload infrastructure,
+    # same reasoning already applied to guide contributions' video_url.
+    # This mirrors the exact payload the frontend's edit-photo flow sends
+    # (condition preserved, photo_url set, acquired_at omitted) and
+    # checks nothing else gets silently clobbered along the way.
+    headers = _auth_headers(client, "collector10@example.com")
+    past_timestamp = 1620000000
+    client.post(
+        "/api/collection",
+        json={"figure_id": "lfp-forest-ranger", "condition": "sealed", "acquired_at": past_timestamp},
+        headers=headers,
+    )
+    client.post(
+        "/api/collection",
+        json={
+            "figure_id": "lfp-forest-ranger",
+            "condition": "sealed",
+            "photo_url": "https://example.com/my-figure.jpg",
+        },
+        headers=headers,
+    )
+
+    items = client.get("/api/collection", headers=headers).json()["items"]
+    item = next(i for i in items if i["figure_id"] == "lfp-forest-ranger")
+    assert item["photo_url"] == "https://example.com/my-figure.jpg"
+    assert item["condition"] == "sealed"
+    assert item["acquired_at"] == past_timestamp

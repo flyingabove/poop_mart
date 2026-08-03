@@ -442,6 +442,8 @@ async function openMyCollection() {
             <span class="profile-link" data-action="edit-condition" data-figure-id="${i.figure_id}" data-condition="${i.condition || ""}" data-photo="${i.photo_url || ""}">edit</span>
             · acquired ${new Date(i.acquired_at * 1000).toLocaleDateString()}
             <span class="profile-link" data-action="edit-acquired" data-figure-id="${i.figure_id}" data-condition2="${i.condition || ""}" data-photo2="${i.photo_url || ""}" data-acquired-date="${new Date(i.acquired_at * 1000).toISOString().slice(0, 10)}">edit</span>
+            · ${i.photo_url && /^https?:\/\//i.test(i.photo_url) ? `<a href="${i.photo_url}" target="_blank" rel="noopener noreferrer">🖼️ view photo</a>` : "no photo"}
+            <span class="profile-link" data-action="edit-photo" data-figure-id="${i.figure_id}" data-condition3="${i.condition || ""}" data-photo3="${i.photo_url || ""}">edit</span>
           </div>
         </div>
         <span class="list-item-price">${i.current_price != null ? "$" + i.current_price.toFixed(0) : "—"}</span>
@@ -592,6 +594,28 @@ async function openMyCollection() {
           condition: el.dataset.condition2 || null,
           photo_url: el.dataset.photo2 || null,
           acquired_at: parsed ? Math.floor(parsed.getTime() / 1000) : null,
+        }),
+      });
+      openMyCollection();
+    })
+  );
+  detailContent.querySelectorAll('[data-action="edit-photo"]').forEach((el) =>
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const next = prompt("Photo link (URL, blank to clear):", el.dataset.photo3);
+      if (next === null) return;
+      const trimmed = next.trim();
+      if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+        alert("Enter a link starting with http:// or https://, or leave blank to clear.");
+        return;
+      }
+      await apiFetch("/api/collection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          figure_id: el.dataset.figureId,
+          condition: el.dataset.condition3 || null,
+          photo_url: trimmed || null,
         }),
       });
       openMyCollection();
