@@ -573,6 +573,20 @@ async function openRanking(rankingId) {
         .join("")
     : `<div class="sig-detail">No figures added yet.</div>`;
 
+  let isFollowingOwner = false;
+  if (isLoggedIn() && !isOwner) {
+    const followsRes = await apiFetch("/api/follows/users");
+    if (followsRes.ok) {
+      const followsData = await followsRes.json();
+      isFollowingOwner = followsData.users.some((u) => u.user_id === ranking.owner_id);
+    }
+  }
+  const followOwnerBtnHtml = isOwner
+    ? ""
+    : isLoggedIn()
+    ? `<button class="follow-btn ${isFollowingOwner ? "following" : ""}" id="follow-owner-btn">${isFollowingOwner ? "✓ Following" : "+ Follow"}</button>`
+    : `<button class="follow-btn" id="follow-owner-btn">Sign in to follow</button>`;
+
   let addFormHtml = "";
   if (isOwner) {
     const figuresData = await (await fetch("/api/figures")).json();
@@ -592,8 +606,13 @@ async function openRanking(rankingId) {
 
   showDetail(`
     <div class="detail-header">
-      <h1>${ranking.title}</h1>
-      <div class="sub">by @${ranking.owner}</div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+        <div>
+          <h1>${ranking.title}</h1>
+          <div class="sub">by @${ranking.owner}</div>
+        </div>
+        ${followOwnerBtnHtml}
+      </div>
     </div>
     <div class="guide-box">
       <div class="section-title">Ranked Figures</div>
@@ -637,6 +656,19 @@ async function openRanking(rankingId) {
     deleteRankingBtn.addEventListener("click", async () => {
       await apiFetch(`/api/rankings/${rankingId}`, { method: "DELETE" });
       openMyCollection();
+    });
+  }
+
+  const followOwnerBtn = document.getElementById("follow-owner-btn");
+  if (followOwnerBtn) {
+    followOwnerBtn.addEventListener("click", async () => {
+      if (!isLoggedIn()) {
+        openAuthModal("login");
+        return;
+      }
+      const method = isFollowingOwner ? "DELETE" : "POST";
+      const res = await apiFetch(`/api/follows/users/${ranking.owner_id}`, { method });
+      if (res.ok) openRanking(rankingId);
     });
   }
 }

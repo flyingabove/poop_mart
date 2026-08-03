@@ -1,12 +1,16 @@
-"""Series follows — the real personalization signal behind the "For You" tab.
+"""Series follows and user (creator) follows.
 See documentation/model_output_docs/FEED_SYSTEM_DESIGN.md (personalization_match
-in the v1 ranking formula) and USER_PROFILES_AND_SOCIAL_DESIGN.md (follows).
+in the v1 ranking formula), USER_PROFILES_AND_SOCIAL_DESIGN.md (follows),
+and DATA_MODEL_INVENTORY.md (Follow: follower_id, followed_id -- user or
+creator).
 
-User-to-user creator follows aren't built yet: feed_cards has no user_id
-(community_post cards are seed/ingested content, not user-authored posts),
-so following another user wouldn't affect anyone's feed today — it would be
-a follow button that does nothing observable. Following a *series* does
-something real right now: it's the input to for_you ranking below."""
+User-to-user follows were deliberately deferred back when series-follows
+were first built: feed_cards had no user_id then (community_post cards
+were seed/ingested only), so following a person would have been a button
+that did nothing observable. That's no longer true -- community posts are
+real and user-authored now, and Rankings expose their owner's id publicly.
+Following a user is a real, useful action today.
+"""
 import time
 
 from backend.app.db.database import get_connection
@@ -63,5 +67,63 @@ def followed_series_ids(user_id: str) -> set[str]:
     try:
         rows = conn.execute("SELECT series_id FROM series_follows WHERE user_id = ?", (user_id,)).fetchall()
         return {r["series_id"] for r in rows}
+    finally:
+        conn.close()
+
+
+def follow_user(follower_id: str, followed_id: str) -> dict:
+    if follower_id == followed_id:
+        raise FollowError("cannot follow yourself")
+    conn = get_connection()
+    try:
+        if not conn.execute("SELECT id FROM users WHERE id = ?", (followed_id,)).fetchone():
+            raise FollowError("user not found")
+        now = int(time.time())
+        conn.execute(
+            "INSERT OR IGNORE INTO user_follows (follower_id, followed_id, created_at) VALUES (?, ?, ?)",
+            (follower_id, followed_id, now),
+        )
+        conn.commit()
+        return {"followed_id": followed_id, "following": True}
+    finally:
+        conn.close()
+
+
+def unfollow_user(follower_id: str, followed_id: str) -> bool:
+    conn = get_connection()
+    try:
+        cur = conn.execute(
+            "DELETE FROM user_follows WHERE follower_id = ? AND followed_id = ?", (follower_id, followed_id)
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def list_followed_users(follower_id: str) -> list[dict]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT uf.followed_id, uf.created_at, u.email "
+            "FROM user_follows uf JOIN users u ON u.id = uf.followed_id "
+            "WHERE uf.follower_id = ? ORDER BY uf.created_at DESC",
+            (follower_id,),
+        ).fetchall()
+        return [
+            {"user_id": r["followed_id"], "handle": r["email"].split("@")[0], "created_at": r["created_at"]}
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+def is_following_user(follower_id: str, followed_id: str) -> bool:
+    conn = get_connection()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM user_follows WHERE follower_id = ? AND followed_id = ?", (follower_id, followed_id)
+        ).fetchone()
+        return row is not None
     finally:
         conn.close()

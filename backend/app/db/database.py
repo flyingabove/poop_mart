@@ -199,6 +199,16 @@ CREATE TABLE IF NOT EXISTS ranking_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ranking_items_ranking ON ranking_items(ranking_id);
+
+CREATE TABLE IF NOT EXISTS user_follows (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    follower_id     TEXT NOT NULL REFERENCES users(id),
+    followed_id     TEXT NOT NULL REFERENCES users(id),
+    created_at      INTEGER NOT NULL,
+    UNIQUE(follower_id, followed_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_follows_follower ON user_follows(follower_id);
 """
 
 

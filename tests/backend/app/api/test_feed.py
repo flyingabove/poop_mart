@@ -81,6 +81,7 @@ def test_create_community_post_appears_in_feed_with_poster(client):
     assert mine["title"] == "Finally got Berry Picker!"
     assert mine["poster"] == "poster2"
     assert mine["figure_id"] == "lfp-berry-picker"
+    assert mine["poster_id"], "poster_id must be exposed so the post's author can be followed"
 
 
 def test_create_community_post_unknown_figure_422s(client):

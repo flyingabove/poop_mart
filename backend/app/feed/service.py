@@ -51,6 +51,7 @@ def _row_to_card(row) -> dict:
         "region": row["region"],
         "created_at": row["created_at"],
         "poster": row["poster"],
+        "poster_id": row["user_id"],
     }
 
 
