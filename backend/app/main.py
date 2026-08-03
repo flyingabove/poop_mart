@@ -19,6 +19,7 @@ from backend.app.api.figures import router as figures_router
 from backend.app.api.pricing import router as pricing_router
 from backend.app.api.guides import router as guides_router
 from backend.app.api.search import router as search_router
+from backend.app.api.auth import router as auth_router
 
 _INDEX_HTML_PATH = Path(__file__).parent.parent.parent / "frontend" / "index.html"
 _IMG_DIR = Path(__file__).parent.parent.parent / "frontend" / "img"
@@ -56,6 +57,7 @@ app.include_router(figures_router, prefix="/api")
 app.include_router(pricing_router, prefix="/api")
 app.include_router(guides_router, prefix="/api")
 app.include_router(search_router, prefix="/api")
+app.include_router(auth_router, prefix="/api")
 
 _IMG_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/img", StaticFiles(directory=str(_IMG_DIR)), name="img")

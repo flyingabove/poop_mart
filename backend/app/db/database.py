@@ -88,6 +88,14 @@ CREATE TABLE IF NOT EXISTS guide_contributions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_contrib_guide ON guide_contributions(guide_id);
+
+CREATE TABLE IF NOT EXISTS users (
+    id              TEXT PRIMARY KEY,
+    email           TEXT NOT NULL UNIQUE,
+    password_salt   TEXT NOT NULL,
+    password_hash   TEXT NOT NULL,
+    created_at      INTEGER NOT NULL
+);
 """
 
 

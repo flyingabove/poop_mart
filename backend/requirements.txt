@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic
 httpx
+PyJWT
 
 # --- Testing (also needed at Docker build time, see Dockerfile test gate) ---
 pytest
