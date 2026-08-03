@@ -48,9 +48,9 @@ CREATE TABLE IF NOT EXISTS feed_cards (
 
 CREATE INDEX IF NOT EXISTS idx_feed_created ON feed_cards(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_feed_type ON feed_cards(card_type);
--- Partial unique index: seed cards have no external_id (NULL, unconstrained);
--- ingested cards dedup on it so re-polling the same article is a no-op.
-CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_external_id ON feed_cards(external_id) WHERE external_id IS NOT NULL;
+-- external_id's unique index is created in _migrate(), not here: on a DB from
+-- before this column existed, executescript() would fail referencing a column
+-- the pre-existing table doesn't have yet, before _migrate() ever runs.
 
 CREATE TABLE IF NOT EXISTS price_snapshots (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,15 +97,17 @@ def _migrate(conn: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS never alters an existing table, so a volume
     seeded before a schema change (e.g. the live Railway beta/prod DBs) needs
     an explicit ALTER TABLE. Keep this additive and idempotent — check first,
-    only add what's missing.
+    only add what's missing. The index is created unconditionally (but with
+    IF NOT EXISTS) *after* the column is guaranteed to exist, whether that's
+    from a fresh CREATE TABLE or from the ALTER TABLE just above.
     """
     cols = {row["name"] for row in conn.execute("PRAGMA table_info(feed_cards)")}
     if "external_id" not in cols:
         conn.execute("ALTER TABLE feed_cards ADD COLUMN external_id TEXT")
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_external_id "
-            "ON feed_cards(external_id) WHERE external_id IS NOT NULL"
-        )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_feed_external_id "
+        "ON feed_cards(external_id) WHERE external_id IS NOT NULL"
+    )
 
 
 def init_db() -> None:
