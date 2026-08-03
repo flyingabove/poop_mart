@@ -40,3 +40,23 @@ def test_list_figures_filters_by_series_id(client):
 def test_get_unknown_figure_404s(client):
     r = client.get("/api/figures/does-not-exist")
     assert r.status_code == 404
+
+
+def test_series_detail_includes_regions(client):
+    # DATA_MODEL_INVENTORY.md documents Series.regions_available and
+    # PRICE_TRACKING_DESIGN.md documents "regional availability" as a
+    # real per-series field -- the seed data has always carried it, but
+    # until now nothing in the frontend read it, and no test locked the
+    # response shape in place.
+    r = client.get("/api/series/labubu-forest-party")
+    data = r.json()
+    assert data["series"]["regions"] == "CN,US,KR,JP"
+
+
+def test_figure_detail_includes_published_pull_rate(client):
+    # DATA_MODEL_INVENTORY.md documents Figure.published_pull_rate.
+    # lfp-moonlit-wanderer is the series' secret/chase figure, seeded
+    # with a real 1/72 rate.
+    r = client.get("/api/figures/lfp-moonlit-wanderer")
+    data = r.json()
+    assert data["figure"]["published_pull_rate"] == 1 / 72

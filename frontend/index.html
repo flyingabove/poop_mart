@@ -1352,7 +1352,7 @@ async function openFigure(figureId) {
   showDetail(`
     <div class="detail-header">
       <h1>${fig.figure.name}</h1>
-      <div class="sub">${fig.figure.colorway || ""} ${fig.figure.is_secret_chase ? "· 🔒 Secret" : ""}</div>
+      <div class="sub">${fig.figure.colorway || ""} ${fig.figure.is_secret_chase ? "· 🔒 Secret" : ""} ${fig.figure.published_pull_rate ? `· 🎯 1 in ${Math.round(1 / fig.figure.published_pull_rate)}` : ""}</div>
     </div>
     ${priceBox}
     ${actionBtns}
@@ -1537,7 +1537,7 @@ async function openSeries(seriesId) {
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
         <div>
           <h1>${seriesData.series.name}</h1>
-          <div class="sub">${seriesData.series.brand_line} · ${seriesData.figures.length} figures</div>
+          <div class="sub">${seriesData.series.brand_line} · ${seriesData.figures.length} figures${seriesData.series.regions ? ` · 🌎 ${seriesData.series.regions.split(",").join(", ")}` : ""}</div>
         </div>
         ${followBtnHtml}
       </div>
