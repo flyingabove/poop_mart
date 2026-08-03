@@ -116,3 +116,20 @@ Attach a Railway volume mounted at `/data` (same as `mvp_chat`) so the SQLite DB
 ### Build-time test gate
 
 Like `mvp_chat`, the goal is that `pytest` runs during `docker build` so a broken build never reaches Railway. Keep `tests/` passing before running `railway up`.
+
+### Live deployment (current state)
+
+Railway project **"poop mart"** (project id `2e1f327c-0e41-4452-b3fc-3e494b69ed72`), two environments:
+
+| Environment | Service | URL |
+|-------------|---------|-----|
+| `beta` | `beta-backend` | https://beta-backend-beta-0e8e.up.railway.app |
+| `prod` | `prod-backend` | https://prod-backend-prod-d9d0.up.railway.app |
+
+Both have a `/data` volume attached and `PORT=8000` set.
+
+**Not GitHub-push-triggered yet.** `railway add --repo flyingabove/poop_mart` failed with "repo not found" — Railway's GitHub App isn't installed/authorized on this repo, which requires a one-time interactive click-through in the Railway dashboard (Project → service → Settings → Source → connect GitHub) that couldn't be done from a non-interactive session. Until that's done, deploys are triggered by running `railway up` locally (see commands above), not by `git push`. To wire up real push-to-deploy: connect the repo once via the dashboard for each service, pointing `beta-backend` at the `beta` branch and `prod-backend` at the `prod` branch — after that, this table's workflow becomes automatic.
+
+### Known issue: CLI-created services need `$PORT`, not a hardcoded port
+
+Dashboard-created Railway services typically auto-detect the Dockerfile's `EXPOSE` port for the public domain. Services created via `railway add` (CLI) did not — the container started fine and listened on 8000, but the edge proxy 502'd on every request without ever reaching the app (confirmed via `railway logs`, zero incoming requests logged). Fix: the Dockerfile `CMD` binds to `${PORT:-8000}` (shell form, so the env var expands at container start) and both services have `PORT=8000` set explicitly. If a future service hits the same 502-with-no-app-logs symptom, check this first before assuming an app bug.
