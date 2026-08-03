@@ -61,3 +61,17 @@ def test_collections_are_isolated_per_user(client):
 
     items_b = client.get("/api/collection", headers=headers_b).json()["items"]
     assert items_b == []
+
+
+def test_editing_condition_updates_not_duplicates(client):
+    # USER_PROFILES_AND_SOCIAL_DESIGN.md documents condition as a
+    # first-class CollectionItem field; posting again for the same figure
+    # is how it's edited (upsert), not a second entry.
+    headers = _auth_headers(client, "collector6@example.com")
+    client.post("/api/collection", json={"figure_id": "lfp-forest-ranger", "condition": "sealed"}, headers=headers)
+    client.post("/api/collection", json={"figure_id": "lfp-forest-ranger", "condition": "opened"}, headers=headers)
+
+    items = client.get("/api/collection", headers=headers).json()["items"]
+    matching = [i for i in items if i["figure_id"] == "lfp-forest-ranger"]
+    assert len(matching) == 1
+    assert matching[0]["condition"] == "opened"

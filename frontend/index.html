@@ -437,7 +437,10 @@ async function openMyCollection() {
       <div class="list-item" data-figure-id="${i.figure_id}">
         <div class="list-item-main">
           <div class="list-item-name">${i.figure_name}</div>
-          <div class="list-item-sub">${i.condition || "condition not set"}</div>
+          <div class="list-item-sub">
+            ${i.condition || "condition not set"}
+            <span class="profile-link" data-action="edit-condition" data-figure-id="${i.figure_id}" data-condition="${i.condition || ""}" data-photo="${i.photo_url || ""}">edit</span>
+          </div>
         </div>
         <span class="list-item-price">${i.current_price != null ? "$" + i.current_price.toFixed(0) : "—"}</span>
         <button class="remove-btn" data-action="remove-collection" data-figure-id="${i.figure_id}">Remove</button>
@@ -547,9 +550,26 @@ async function openMyCollection() {
       openMyCollection();
     })
   );
+  detailContent.querySelectorAll('[data-action="edit-condition"]').forEach((el) =>
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const next = prompt("Condition (e.g. Sealed, Opened, Displayed):", el.dataset.condition);
+      if (next === null) return;
+      await apiFetch("/api/collection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          figure_id: el.dataset.figureId,
+          condition: next.trim() || null,
+          photo_url: el.dataset.photo || null,
+        }),
+      });
+      openMyCollection();
+    })
+  );
   detailContent.querySelectorAll(".list-item").forEach((el) =>
     el.addEventListener("click", (e) => {
-      if (e.target.closest(".remove-btn")) return;
+      if (e.target.closest(".remove-btn") || e.target.closest("[data-action]")) return;
       if (el.dataset.rankingId) openRanking(el.dataset.rankingId);
       else openFigure(el.dataset.figureId);
     })
