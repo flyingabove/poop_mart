@@ -75,3 +75,63 @@ def test_editing_condition_updates_not_duplicates(client):
     matching = [i for i in items if i["figure_id"] == "lfp-forest-ranger"]
     assert len(matching) == 1
     assert matching[0]["condition"] == "opened"
+
+
+def test_add_with_explicit_acquired_at(client):
+    # DATA_MODEL_INVENTORY.md documents acquired_at as a first-class
+    # CollectionItem field -- letting a client provide it (rather than
+    # always defaulting to "now") matters for anyone backfilling a
+    # collection they already owned before using the app.
+    headers = _auth_headers(client, "collector7@example.com")
+    past_timestamp = 1700000000  # 2023-11-14, clearly not "now"
+    client.post(
+        "/api/collection",
+        json={"figure_id": "lfp-forest-ranger", "acquired_at": past_timestamp},
+        headers=headers,
+    )
+
+    items = client.get("/api/collection", headers=headers).json()["items"]
+    item = next(i for i in items if i["figure_id"] == "lfp-forest-ranger")
+    assert item["acquired_at"] == past_timestamp
+
+
+def test_editing_condition_preserves_acquired_at(client):
+    # Regression guard: a condition-only edit (acquired_at omitted) must
+    # NOT silently reset the item's acquisition date to today -- that
+    # would corrupt real collection history for every existing item the
+    # moment its condition is ever edited.
+    headers = _auth_headers(client, "collector8@example.com")
+    past_timestamp = 1650000000  # 2022-04-15
+    client.post(
+        "/api/collection",
+        json={"figure_id": "lfp-forest-ranger", "acquired_at": past_timestamp},
+        headers=headers,
+    )
+    client.post(
+        "/api/collection",
+        json={"figure_id": "lfp-forest-ranger", "condition": "displayed"},
+        headers=headers,
+    )
+
+    items = client.get("/api/collection", headers=headers).json()["items"]
+    item = next(i for i in items if i["figure_id"] == "lfp-forest-ranger")
+    assert item["condition"] == "displayed"
+    assert item["acquired_at"] == past_timestamp
+
+
+def test_editing_acquired_at_updates_it(client):
+    headers = _auth_headers(client, "collector9@example.com")
+    client.post(
+        "/api/collection",
+        json={"figure_id": "lfp-forest-ranger", "acquired_at": 1600000000},
+        headers=headers,
+    )
+    client.post(
+        "/api/collection",
+        json={"figure_id": "lfp-forest-ranger", "acquired_at": 1650000000},
+        headers=headers,
+    )
+
+    items = client.get("/api/collection", headers=headers).json()["items"]
+    item = next(i for i in items if i["figure_id"] == "lfp-forest-ranger")
+    assert item["acquired_at"] == 1650000000

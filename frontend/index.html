@@ -440,6 +440,8 @@ async function openMyCollection() {
           <div class="list-item-sub">
             ${i.condition || "condition not set"}
             <span class="profile-link" data-action="edit-condition" data-figure-id="${i.figure_id}" data-condition="${i.condition || ""}" data-photo="${i.photo_url || ""}">edit</span>
+            · acquired ${new Date(i.acquired_at * 1000).toLocaleDateString()}
+            <span class="profile-link" data-action="edit-acquired" data-figure-id="${i.figure_id}" data-condition2="${i.condition || ""}" data-photo2="${i.photo_url || ""}" data-acquired-date="${new Date(i.acquired_at * 1000).toISOString().slice(0, 10)}">edit</span>
           </div>
         </div>
         <span class="list-item-price">${i.current_price != null ? "$" + i.current_price.toFixed(0) : "—"}</span>
@@ -566,6 +568,30 @@ async function openMyCollection() {
           figure_id: el.dataset.figureId,
           condition: next.trim() || null,
           photo_url: el.dataset.photo || null,
+        }),
+      });
+      openMyCollection();
+    })
+  );
+  detailContent.querySelectorAll('[data-action="edit-acquired"]').forEach((el) =>
+    el.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const next = prompt("Date acquired (YYYY-MM-DD):", el.dataset.acquiredDate);
+      if (next === null) return;
+      const trimmed = next.trim();
+      const parsed = trimmed ? new Date(trimmed + "T00:00:00") : null;
+      if (trimmed && (!parsed || isNaN(parsed.getTime()))) {
+        alert("Enter a valid date as YYYY-MM-DD.");
+        return;
+      }
+      await apiFetch("/api/collection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          figure_id: el.dataset.figureId,
+          condition: el.dataset.condition2 || null,
+          photo_url: el.dataset.photo2 || null,
+          acquired_at: parsed ? Math.floor(parsed.getTime() / 1000) : null,
         }),
       });
       openMyCollection();

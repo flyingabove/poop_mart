@@ -13,6 +13,7 @@ class CollectionItemIn(BaseModel):
     figure_id: str
     condition: Optional[str] = None
     photo_url: Optional[str] = None
+    acquired_at: Optional[int] = None
 
 
 @router.get("/collection")
@@ -28,7 +29,7 @@ async def collection_valuation(user: dict = Depends(get_current_user)):
 @router.post("/collection", status_code=201)
 async def post_collection(body: CollectionItemIn, user: dict = Depends(get_current_user)):
     try:
-        return add_item(user["id"], body.figure_id, body.condition, body.photo_url)
+        return add_item(user["id"], body.figure_id, body.condition, body.photo_url, body.acquired_at)
     except CollectionError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
