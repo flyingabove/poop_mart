@@ -241,6 +241,8 @@ def test_voting_raises_confidence_score(client):
 
 def test_shake_guide_feed_card_appears_on_threshold_and_updates_after(client):
     headers = _auth_headers(client, "guidecard-flow@example.com")
+    follower_headers = _auth_headers(client, "guidecard-follower@example.com")
+    client.post("/api/follows/series/labubu-macaron", headers=follower_headers)
 
     def _post(figure_id, claim):
         r = client.post(
@@ -256,16 +258,23 @@ def test_shake_guide_feed_card_appears_on_threshold_and_updates_after(client):
         assert len(matches) <= 1, "should update the same card in place, never duplicate"
         return matches[0] if matches else None
 
+    def _guide_notif_count():
+        data = client.get("/api/notifications", headers=follower_headers).json()
+        return sum(1 for n in data["notifications"] if n.get("series_id") == "labubu-macaron")
+
     _post("lm-vanilla", "45g")
     _post("lm-pistachio", "44g")
     assert _card() is None, "below SHAKE_GUIDE_CARD_THRESHOLD (3) -- no card yet"
+    assert _guide_notif_count() == 0, "no notification below threshold"
 
     _post("lm-vanilla", "faint rattle")
     card = _card()
     assert card is not None, "3rd contribution crosses the threshold"
     assert "Labubu Macaron" in card["title"]
     assert "3 community tells" in card["body"]
+    assert _guide_notif_count() == 1, "a series-follower is notified exactly once, on the crossing"
 
     _post("lm-pistachio", "code ends in 7")
     card = _card()
     assert "4 community tells" in card["body"], "card updates in place on further contributions"
+    assert _guide_notif_count() == 1, "no repeat notification for contributions after the initial crossing"

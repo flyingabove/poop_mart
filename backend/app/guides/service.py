@@ -25,6 +25,7 @@ Contributor" badge impossible to compute honestly.
 """
 import time
 from backend.app.db.database import get_connection
+from backend.app.notifications.service import notify_followers_of_new_card
 
 
 def _display_handle(email: str | None) -> str | None:
@@ -193,18 +194,31 @@ _ALLOWED_TECHNIQUES = {"weight", "sound", "box_code", "seam"}
 SHAKE_GUIDE_CARD_THRESHOLD = 3
 
 
-def _maybe_update_guide_card(conn, guide_id: str, series_id: str) -> None:
+def _maybe_update_guide_card(conn, guide_id: str, series_id: str) -> tuple[str, str] | None:
+    """Upserts the guide's feed card once past threshold. Returns
+    (card_id, title) only the first time the card is created (the actual
+    threshold-crossing moment), None otherwise -- including on every later
+    contribution that just updates an already-existing card. This is what
+    the caller uses to decide whether to notify: NOTIFICATIONS_DESIGN.md's
+    Delivery Rules describe price/restock alerts as rate-limited "no more
+    than one push per threshold crossing per cooldown window," and firing a
+    notification on every single contribution once already past threshold
+    would be exactly the spam that rule exists to prevent -- so this only
+    ever fires once per guide's lifetime, on the crossing itself.
+    """
     contrib_count = conn.execute(
         "SELECT COUNT(*) AS n FROM guide_contributions WHERE guide_id = ?", (guide_id,)
     ).fetchone()["n"]
     if contrib_count < SHAKE_GUIDE_CARD_THRESHOLD:
-        return
+        return None
 
     series = conn.execute("SELECT name FROM series WHERE id = ?", (series_id,)).fetchone()
     if not series:
-        return
+        return None
 
     card_id = f"guide-card:{series_id}"
+    already_existed = conn.execute("SELECT 1 FROM feed_cards WHERE id = ?", (card_id,)).fetchone() is not None
+
     now = int(time.time())
     title = f"Shake Guide updated for {series['name']}"
     body = f"{contrib_count} community tells now recorded for {series['name']} — check the figure signatures."
@@ -215,6 +229,7 @@ def _maybe_update_guide_card(conn, guide_id: str, series_id: str) -> None:
         "ON CONFLICT(id) DO UPDATE SET title = excluded.title, body = excluded.body, created_at = excluded.created_at",
         (card_id, series_id, title, body, now),
     )
+    return None if already_existed else (card_id, title)
 
 
 def add_contribution(
@@ -252,8 +267,11 @@ def add_contribution(
             (guide_id, figure_id, technique_type, claim_text, weight_range_g, video_url, user_id, now),
         )
         conn.commit()
-        _maybe_update_guide_card(conn, guide_id, series_id)
+        newly_crossed = _maybe_update_guide_card(conn, guide_id, series_id)
         conn.commit()
+        if newly_crossed:
+            card_id, title = newly_crossed
+            notify_followers_of_new_card(card_id, series_id, title)
         return {"id": cur.lastrowid, "guide_id": guide_id, "created_at": now}
     finally:
         conn.close()
