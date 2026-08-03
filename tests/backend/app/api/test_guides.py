@@ -67,6 +67,40 @@ def test_add_contribution_is_attributed_to_the_poster(client):
     assert "@" not in mine["contributor"]
 
 
+def test_add_contribution_with_video_url(client):
+    # SHAKE_GUIDES_DESIGN.md documents video_url as a first-class
+    # GuideContribution field ("demonstration clip"); the API has always
+    # accepted and returned it, previously with no test coverage at all.
+    headers = _auth_headers(client, "contributor-video@example.com")
+    client.post(
+        "/api/guides/labubu-forest-party/contributions",
+        json={
+            "figure_id": "lfp-acorn-hoarder",
+            "technique_type": "sound",
+            "claim_text": "distinct rattle, see clip",
+            "video_url": "https://example.com/demo-clip",
+        },
+        headers=headers,
+    )
+
+    data = client.get("/api/guides/labubu-forest-party").json()
+    mine = next(c for c in data["contributions"] if c["claim_text"] == "distinct rattle, see clip")
+    assert mine["video_url"] == "https://example.com/demo-clip"
+
+
+def test_add_contribution_without_video_url_is_null(client):
+    headers = _auth_headers(client, "contributor-novideo@example.com")
+    client.post(
+        "/api/guides/labubu-forest-party/contributions",
+        json={"figure_id": "lfp-acorn-hoarder", "technique_type": "weight", "claim_text": "no video for this one"},
+        headers=headers,
+    )
+
+    data = client.get("/api/guides/labubu-forest-party").json()
+    mine = next(c for c in data["contributions"] if c["claim_text"] == "no video for this one")
+    assert mine["video_url"] is None
+
+
 def test_seeded_contributions_have_no_contributor(client):
     # Seed-era contributions predate auth and are never backfilled with a user.
     data = client.get("/api/guides/labubu-forest-party").json()

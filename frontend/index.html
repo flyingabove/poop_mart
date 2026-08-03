@@ -1483,6 +1483,7 @@ async function openSeries(seriesId) {
           <span class="contrib-technique">${c.technique_type}</span>
         </div>
         <div class="contrib-claim">${c.claim_text}</div>
+        ${c.video_url && /^https?:\/\//i.test(c.video_url) ? `<div class="contrib-claim"><a href="${c.video_url}" target="_blank" rel="noopener noreferrer">🎥 watch demo clip</a></div>` : ""}
         <div class="vote-row">
           <button class="vote-btn ${c.my_vote === "up" ? "active-up" : ""}" data-direction="up">▲ ${c.upvotes}</button>
           <button class="vote-btn ${c.my_vote === "down" ? "active-down" : ""}" data-direction="down">▼ ${c.downvotes}</button>
@@ -1541,6 +1542,8 @@ async function openSeries(seriesId) {
         <textarea name="claim_text" rows="2" required placeholder="e.g. 47g, faint rattle near the top"></textarea>
         <label>Weight range (optional)</label>
         <input name="weight_range_g" placeholder="e.g. 46-48g" />
+        <label>Video link (optional)</label>
+        <input name="video_url" type="url" placeholder="e.g. link to your demo clip on TikTok/YouTube" />
         <button type="submit">Submit</button>
         <div class="form-note" id="contrib-note">Thanks — added to the guide.</div>
       </form>` : `<div class="contrib-form"><button class="action-btn" id="contrib-signin-btn">Sign in to add a tell</button></div>`}
@@ -1557,6 +1560,7 @@ async function openSeries(seriesId) {
         technique_type: fd.get("technique_type"),
         claim_text: fd.get("claim_text"),
         weight_range_g: fd.get("weight_range_g") || null,
+        video_url: fd.get("video_url") || null,
       };
       const res = await apiFetch(`/api/guides/${seriesId}/contributions`, {
         method: "POST",
