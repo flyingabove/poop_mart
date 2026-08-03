@@ -126,41 +126,59 @@ async def ingest_google_news() -> int:
     (matched by external_id, which doubles as the row's primary key) are
     silently skipped via INSERT OR IGNORE — re-polling the same headline is
     a no-op, not a duplicate.
+
+    Network fetching and DB writing are deliberately two separate phases —
+    no DB connection is held open across the network round-trips. An
+    earlier version opened one connection, then looped `await
+    _fetch_rss(query)` for all 6 queries with writes interleaved in
+    between, only committing at the end. That transaction could stay open
+    for 10-30+ seconds across six sequential HTTP round-trips to Google
+    News — long enough that any other concurrent write anywhere in the app
+    (a signup, a review, a vote) could hit "database is locked" waiting
+    for it. Fetching everything first, then opening a connection only to
+    do the (fast, local) INSERTs, shrinks the write-lock window to
+    however long the INSERTs themselves take.
     """
-    conn = get_connection()
+    read_conn = get_connection()
     try:
-        series, figures = _load_catalog(conn)
-        inserted = 0
-        newly_inserted: list[tuple[str, str | None, str]] = []  # (card_id, series_id, title)
-
-        for query in _QUERIES:
-            try:
-                xml_text = await _fetch_rss(query)
-                items = _parse_items(xml_text)
-            except Exception:
-                _log.warning("ingestion: query failed, skipping", extra={"query": query}, exc_info=True)
-                continue
-
-            for item in items:
-                figure_id, series_id = _resolve(item["title"], series, figures)
-                body = f"Covered by {item['source_name']}." if item["source_name"] else "Covered in the press."
-                cur = conn.execute(
-                    "INSERT OR IGNORE INTO feed_cards "
-                    "(id, card_type, figure_id, series_id, title, body, source_trust_tier, "
-                    "region, external_id, created_at) "
-                    "VALUES (?, 'regional_news', ?, ?, ?, ?, 'community', 'Global', ?, ?)",
-                    (
-                        item["external_id"], figure_id, series_id, item["title"], body,
-                        item["external_id"], item["created_at"],
-                    ),
-                )
-                if cur.rowcount:
-                    inserted += 1
-                    newly_inserted.append((item["external_id"], series_id, item["title"]))
-
-        conn.commit()
+        series, figures = _load_catalog(read_conn)
     finally:
-        conn.close()
+        read_conn.close()
+
+    to_insert: list[tuple[str, str | None, str | None, str, str, int]] = []
+    for query in _QUERIES:
+        try:
+            xml_text = await _fetch_rss(query)
+            items = _parse_items(xml_text)
+        except Exception:
+            _log.warning("ingestion: query failed, skipping", extra={"query": query}, exc_info=True)
+            continue
+
+        for item in items:
+            figure_id, series_id = _resolve(item["title"], series, figures)
+            body = f"Covered by {item['source_name']}." if item["source_name"] else "Covered in the press."
+            to_insert.append(
+                (item["external_id"], figure_id, series_id, item["title"], body, item["created_at"])
+            )
+
+    inserted = 0
+    newly_inserted: list[tuple[str, str | None, str]] = []  # (card_id, series_id, title)
+    write_conn = get_connection()
+    try:
+        for external_id, figure_id, series_id, title, body, created_at in to_insert:
+            cur = write_conn.execute(
+                "INSERT OR IGNORE INTO feed_cards "
+                "(id, card_type, figure_id, series_id, title, body, source_trust_tier, "
+                "region, external_id, created_at) "
+                "VALUES (?, 'regional_news', ?, ?, ?, ?, 'community', 'Global', ?, ?)",
+                (external_id, figure_id, series_id, title, body, external_id, created_at),
+            )
+            if cur.rowcount:
+                inserted += 1
+                newly_inserted.append((external_id, series_id, title))
+        write_conn.commit()
+    finally:
+        write_conn.close()
 
     # Notify after commit, on a separate connection, so a notification never
     # references a feed card that isn't durably visible yet.

@@ -201,8 +201,16 @@ def init_db() -> None:
 
 
 def get_connection() -> sqlite3.Connection:
-    """Return a new SQLite connection. Caller is responsible for closing."""
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+    """Return a new SQLite connection. Caller is responsible for closing.
+
+    timeout=15 (Python's sqlite3 default is 5s): defense-in-depth against
+    "database is locked" if two writers ever briefly overlap — the real
+    fix for the one known cause (ingestion holding a connection open across
+    slow network calls) is structural, in ingestion/news.py, not this
+    timeout. This just gives any other short-lived contention more room
+    before it surfaces as an error instead of failing fast.
+    """
+    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=15)
     conn.row_factory = sqlite3.Row
     return conn
 

@@ -65,6 +65,40 @@ def test_ingest_google_news_inserts_and_dedupes(isolated_db, monkeypatch):
     assert second == 0  # same guids on re-poll -> nothing new
 
 
+def test_ingest_does_not_hold_a_connection_open_across_network_fetches(isolated_db, monkeypatch):
+    """Regression test for the "database is locked" bug: a DB connection
+    must never be open while a network fetch is in flight. Records the
+    interleaving of get_connection() calls vs. network fetches and asserts
+    they never overlap -- exactly two connections total (one to read the
+    catalog up front, one to write at the end), both outside the fetch
+    window, regardless of how many queries are polled."""
+    call_order = []
+
+    class _TrackingFakeAsyncClient(_FakeAsyncClient):
+        async def get(self, url, params=None, headers=None):
+            call_order.append(("fetch", params["q"]))
+            return await super().get(url, params=params, headers=headers)
+
+    monkeypatch.setattr(news_mod.httpx, "AsyncClient", _TrackingFakeAsyncClient)
+
+    real_get_connection = news_mod.get_connection
+
+    def _tracking_get_connection():
+        call_order.append(("connect",))
+        return real_get_connection()
+
+    monkeypatch.setattr(news_mod, "get_connection", _tracking_get_connection)
+
+    asyncio.run(news_mod.ingest_google_news())
+
+    connect_indices = [i for i, c in enumerate(call_order) if c[0] == "connect"]
+    fetch_indices = [i for i, c in enumerate(call_order) if c[0] == "fetch"]
+
+    assert len(connect_indices) == 2, "expected exactly one read connection and one write connection"
+    assert connect_indices[0] < fetch_indices[0], "the read connection must open (and close) before fetching starts"
+    assert connect_indices[1] > fetch_indices[-1], "the write connection must not open until all fetches are done"
+
+
 def test_ingest_notifies_followers_of_resolved_series(isolated_db, monkeypatch):
     """End-to-end: ingest -> resolve headline to a series -> notify anyone
     following it. The fake client's "Pop Mart Labubu" query produces a
