@@ -1195,7 +1195,7 @@ async function openBrowseSeries() {
       <div class="list-item" data-series-id="${s.id}">
         <div class="list-item-main">
           <div class="list-item-name">${s.name}</div>
-          <div class="list-item-sub">${s.brand_line} · ${countBySeriesId[s.id] || 0} figures</div>
+          <div class="list-item-sub">${s.brand_line} · ${countBySeriesId[s.id] || 0} figures${s.release_date ? ` · released ${s.release_date}` : ""}</div>
         </div>
       </div>`
         )
@@ -1537,7 +1537,7 @@ async function openSeries(seriesId) {
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
         <div>
           <h1>${seriesData.series.name}</h1>
-          <div class="sub">${seriesData.series.brand_line} · ${seriesData.figures.length} figures${seriesData.series.regions ? ` · 🌎 ${seriesData.series.regions.split(",").join(", ")}` : ""}</div>
+          <div class="sub">${seriesData.series.brand_line} · ${seriesData.figures.length} figures${seriesData.series.release_date ? ` · released ${seriesData.series.release_date}` : ""}${seriesData.series.regions ? ` · 🌎 ${seriesData.series.regions.split(",").join(", ")}` : ""}</div>
         </div>
         ${followBtnHtml}
       </div>

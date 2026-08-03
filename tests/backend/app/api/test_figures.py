@@ -42,6 +42,17 @@ def test_get_unknown_figure_404s(client):
     assert r.status_code == 404
 
 
+def test_list_series_includes_release_date(client):
+    # DATA_MODEL_INVENTORY.md documents Series.release_date -- seeded
+    # with real values since the original scaffold, returned by the API
+    # (plain SELECT *), but never rendered anywhere in the frontend and
+    # never covered by a test until now.
+    r = client.get("/api/series")
+    data = r.json()
+    lfp = next(s for s in data["series"] if s["id"] == "labubu-forest-party")
+    assert lfp["release_date"] == "2026-06-01"
+
+
 def test_series_detail_includes_regions(client):
     # DATA_MODEL_INVENTORY.md documents Series.regions_available and
     # PRICE_TRACKING_DESIGN.md documents "regional availability" as a
