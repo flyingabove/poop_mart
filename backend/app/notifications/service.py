@@ -18,21 +18,36 @@ real sourcing exists.
 Preferences: the Delivery Rules also say "all notifications are opt-in
 per category ... no bundled all-or-nothing toggle" -- until now there was
 no toggle of any kind, bundled or otherwise. notification_preferences
-gives per-category control for the two categories that are actually real
-today (followed_series_update, followed_user_post); price_alerts/drops/
-restocks/guide_updates aren't wired triggers yet so there's nothing to
+gives per-category control for the categories that are actually real
+today (followed_series_update, followed_user_post, shake_guide_update);
+price_alerts/restocks aren't wired triggers yet so there's nothing to
 toggle for them. Interpreted "opt-in" here as "independently
 controllable," not "off until explicitly enabled" -- flipping the
 existing, already-shipped notification flow to default-off would be a
 silent behavior change for every current user, not a neutral reading of
 the doc. A missing preference row means enabled (matches current
 behavior); an explicit disabled row overrides that.
+
+shake_guide_update was split out from followed_series_update: the
+Delivery Rules list "drops" and "guide updates" as separate opt-in
+categories, but both a followed series' regular news/trend cards
+(news.py) and its Shake Guide threshold-crossing card
+(guides/service.py) called the same notify_followers_of_new_card()
+with a hardcoded 'followed_series_update' type -- a collector who
+wants Shake Guide contribution alerts but not general series news (or
+the reverse) had no way to express that; toggling the one preference
+silenced both.
 """
 import time
 
 from backend.app.db.database import get_connection
 
-_KNOWN_CATEGORIES = {"followed_series_update", "followed_user_post"}
+_KNOWN_CATEGORIES = {"followed_series_update", "followed_user_post", "shake_guide_update"}
+
+_GENERIC_TITLE_BY_CATEGORY = {
+    "followed_series_update": "New update for a series you follow",
+    "shake_guide_update": "Shake Guide update for a series you follow",
+}
 
 
 def get_preferences(user_id: str) -> dict[str, bool]:
@@ -71,11 +86,19 @@ def _is_enabled(conn, user_id: str, category: str) -> bool:
     return bool(row["enabled"]) if row else True
 
 
-def notify_followers_of_new_card(card_id: str, series_id: str | None, title: str) -> int:
+def notify_followers_of_new_card(
+    card_id: str, series_id: str | None, title: str, category: str = "followed_series_update"
+) -> int:
     """Called right after a new feed card is inserted. Creates one
     notification per user following the card's series (skipping anyone who
     has opted out of this category). No-op if the card has no series_id or
-    nobody follows it. Returns notifications created."""
+    nobody follows it. Returns notifications created.
+
+    `category` lets callers route into a distinct opt-in preference --
+    e.g. Shake Guide threshold-crossing cards use 'shake_guide_update' so
+    they're independently controllable from general series news/trend
+    cards, per NOTIFICATIONS_DESIGN.md listing "drops" and "guide
+    updates" as separate categories."""
     if not series_id:
         return 0
 
@@ -87,16 +110,19 @@ def notify_followers_of_new_card(card_id: str, series_id: str | None, title: str
                 "SELECT user_id FROM series_follows WHERE series_id = ?", (series_id,)
             ).fetchall()
         ]
-        follower_ids = [uid for uid in follower_ids if _is_enabled(conn, uid, "followed_series_update")]
+        follower_ids = [uid for uid in follower_ids if _is_enabled(conn, uid, category)]
         if not follower_ids:
             return 0
 
         now = int(time.time())
+        generic_title = _GENERIC_TITLE_BY_CATEGORY.get(
+            category, _GENERIC_TITLE_BY_CATEGORY["followed_series_update"]
+        )
         conn.executemany(
             "INSERT INTO notifications "
             "(user_id, notification_type, title, body, series_id, feed_card_id, created_at) "
-            "VALUES (?, 'followed_series_update', 'New update for a series you follow', ?, ?, ?, ?)",
-            [(uid, title, series_id, card_id, now) for uid in follower_ids],
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(uid, category, generic_title, title, series_id, card_id, now) for uid in follower_ids],
         )
         conn.commit()
         return len(follower_ids)

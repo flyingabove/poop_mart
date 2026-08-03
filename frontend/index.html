@@ -523,9 +523,13 @@ async function openMyCollection() {
         <input type="checkbox" id="pref-followed_series_update" ${preferences.followed_series_update ? "checked" : ""} />
         Updates from series you follow
       </label>
-      <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400; margin-bottom:10px;">
         <input type="checkbox" id="pref-followed_user_post" ${preferences.followed_user_post ? "checked" : ""} />
         Posts from collectors you follow
+      </label>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:400;">
+        <input type="checkbox" id="pref-shake_guide_update" ${preferences.shake_guide_update ? "checked" : ""} />
+        Shake Guide updates for series you follow
       </label>
     </div>
 
@@ -652,7 +656,7 @@ async function openMyCollection() {
     })
   );
 
-  ["followed_series_update", "followed_user_post"].forEach((category) => {
+  ["followed_series_update", "followed_user_post", "shake_guide_update"].forEach((category) => {
     document.getElementById(`pref-${category}`).addEventListener("change", async (e) => {
       await apiFetch(`/api/notifications/preferences/${category}`, {
         method: "PUT",

@@ -279,7 +279,7 @@ def add_contribution(
         conn.commit()
         if newly_crossed:
             card_id, title = newly_crossed
-            notify_followers_of_new_card(card_id, series_id, title)
+            notify_followers_of_new_card(card_id, series_id, title, category="shake_guide_update")
         return {"id": cur.lastrowid, "guide_id": guide_id, "created_at": now}
     finally:
         conn.close()

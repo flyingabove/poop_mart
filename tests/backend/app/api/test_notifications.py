@@ -137,7 +137,11 @@ def test_post_by_user_with_no_followers_is_noop(client):
 def test_default_preferences_are_enabled(client):
     _id, headers = _signup(client, "notif-pref-default@example.com")
     data = client.get("/api/notifications/preferences", headers=headers).json()
-    assert data["preferences"] == {"followed_series_update": True, "followed_user_post": True}
+    assert data["preferences"] == {
+        "followed_series_update": True,
+        "followed_user_post": True,
+        "shake_guide_update": True,
+    }
 
 
 def test_preferences_require_auth(client):
@@ -180,6 +184,30 @@ def test_disabling_series_update_preference_suppresses_notification(client):
 
     opted_in_data = client.get("/api/notifications", headers=opted_in_headers).json()
     assert any(n["body"] == "Preference test headline" for n in opted_in_data["notifications"])
+
+
+def test_shake_guide_update_is_independently_controllable_from_series_update(client):
+    # NOTIFICATIONS_DESIGN.md's Delivery Rules list "drops" and "guide
+    # updates" as separate opt-in categories -- previously both a
+    # followed series' regular news/trend cards and its Shake Guide
+    # threshold-crossing card used the same followed_series_update
+    # category via notify_followers_of_new_card()'s hardcoded type, so
+    # there was no way to opt out of one without silencing both.
+    _id, headers = _signup(client, "notif-pref-guideonly@example.com")
+    client.put("/api/notifications/preferences/shake_guide_update", json={"enabled": False}, headers=headers)
+    client.post("/api/follows/series/crybaby-crying-again", headers=headers)
+
+    # A regular (default-category) series-update notification still comes through...
+    notify_followers_of_new_card("test-card-guide-pref-1", "crybaby-crying-again", "Regular news")
+    data = client.get("/api/notifications", headers=headers).json()
+    assert any(n["body"] == "Regular news" for n in data["notifications"])
+
+    # ...but a shake_guide_update-category one is suppressed for this user.
+    notify_followers_of_new_card(
+        "test-card-guide-pref-2", "crybaby-crying-again", "Guide update", category="shake_guide_update"
+    )
+    data = client.get("/api/notifications", headers=headers).json()
+    assert not any(n["body"] == "Guide update" for n in data["notifications"])
 
 
 def test_disabling_user_post_preference_suppresses_notification(client):

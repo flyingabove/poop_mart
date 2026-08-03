@@ -382,6 +382,12 @@ def test_shake_guide_feed_card_appears_on_threshold_and_updates_after(client):
     assert "Labubu Macaron" in card["title"]
     assert "3 community tells" in card["body"]
     assert _guide_notif_count() == 1, "a series-follower is notified exactly once, on the crossing"
+    notif_data = client.get("/api/notifications", headers=follower_headers).json()
+    guide_notif = next(n for n in notif_data["notifications"] if n.get("series_id") == "labubu-macaron")
+    assert guide_notif["notification_type"] == "shake_guide_update", (
+        "a real Shake Guide threshold-crossing notification must use its own category, "
+        "independently controllable from general followed-series updates"
+    )
 
     _post("lm-pistachio", "code ends in 7")
     card = _card()
