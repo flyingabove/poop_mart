@@ -7,12 +7,13 @@ email's local part (before @), not the full address -- there's no separate
 display-name/username field yet, and showing a full email on a public
 review is more than this feature needs to expose.
 
-Helpfulness voting: USER_PROFILES_AND_SOCIAL_DESIGN.md defines "Top
-Reviewer" as review volume *and* helpfulness votes, but only volume was
-ever implemented (badges/service.py). Unlike guide_contributions, the
-`reviews` table has no seed data and never had hardcoded vote counts, so
-helpful/unhelpful counts here are computed purely from `review_votes` --
-no baseline-offset merging needed, unlike the guide-contribution case.
+Helpfulness voting: unlike guide_contributions, the `reviews` table has
+no seed data and never had hardcoded vote counts, so helpful/unhelpful
+counts here are computed purely from `review_votes` -- no baseline-offset
+merging needed, unlike the guide-contribution case. USER_PROFILES_AND_SOCIAL_DESIGN.md
+defines "Top Reviewer" as review volume *and* helpfulness votes; both are
+now checked in badges/service.py (fixed at iteration 30 -- volume alone
+was the only thing implemented for a long time).
 
 Feed cards: FEED_SYSTEM_DESIGN.md lists "⭐ Reviews" as a first-class feed
 card type alongside "📷 Community Posts" -- the frontend has always had a

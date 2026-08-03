@@ -103,17 +103,35 @@ def test_no_guide_contributor_badge_below_threshold(client):
     assert not any(b["code"] == "guide_contributor" for b in badges)
 
 
-def test_top_reviewer_badge_after_threshold_reviews(client):
+def test_top_reviewer_badge_after_threshold_reviews_and_a_helpful_vote(client):
+    # Top Reviewer requires review volume AND net helpful votes (see
+    # badges/service.py) -- volume alone used to be enough, but that was a
+    # known-incomplete reading of USER_PROFILES_AND_SOCIAL_DESIGN.md, fixed
+    # at iteration 30. Volume with zero votes is covered precisely by the
+    # isolated-DB tests in tests/backend/app/badges/test_service.py; this
+    # one exercises the real API end-to-end including the vote.
     signup = client.post("/api/auth/signup", json={"email": "badge-reviewer@example.com", "password": "hunter22"})
     headers = {"Authorization": f"Bearer {signup.json()['access_token']}"}
+    voter_signup = client.post(
+        "/api/auth/signup", json={"email": "badge-reviewer-voter@example.com", "password": "hunter22"}
+    )
+    voter_headers = {"Authorization": f"Bearer {voter_signup.json()['access_token']}"}
 
     # Figures NOT used by test_reviews.py's exact-count assertions -- this
     # suite shares a DB across the whole session, and cb-tears/
     # lfp-forest-ranger/lm-vanilla/sp-nightwatch all have review_count == N
     # assertions elsewhere that an extra review here would silently break.
+    review_id = None
     for figure_id in ["lfp-berry-picker", "lfp-mushroom-nap", "lfp-firefly-watcher"]:
         r = client.post(f"/api/figures/{figure_id}/reviews", json={"rating": 4}, headers=headers)
         assert r.status_code == 201
+        if review_id is None:
+            data = client.get(f"/api/figures/{figure_id}/reviews", headers=headers).json()
+            review_id = data["my_review"] and next(
+                rv["id"] for rv in data["reviews"] if rv["reviewer"] == "badge-reviewer"
+            )
+
+    client.post(f"/api/reviews/{review_id}/vote", json={"direction": "helpful"}, headers=voter_headers)
 
     badges = client.get("/api/auth/me", headers=headers).json()["badges"]
     assert any(b["code"] == "top_reviewer" for b in badges)
