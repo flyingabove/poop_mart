@@ -230,3 +230,42 @@ def test_voting_raises_confidence_score(client):
         if s["figure_id"] == figure_id
     )
     assert after["confidence_score"] >= before["confidence_score"]
+
+
+# labubu-macaron (lm-vanilla / lm-pistachio) has no seeded guide or
+# contributions and no other test in this suite touches its guide -- a
+# clean series to test the contribution-count-crosses-threshold feed card
+# trigger from a known-zero starting point. Written as one self-contained
+# test (not several relying on shared state across test functions) since
+# pytest execution order across functions shouldn't be load-bearing.
+
+def test_shake_guide_feed_card_appears_on_threshold_and_updates_after(client):
+    headers = _auth_headers(client, "guidecard-flow@example.com")
+
+    def _post(figure_id, claim):
+        r = client.post(
+            "/api/guides/labubu-macaron/contributions",
+            json={"figure_id": figure_id, "technique_type": "weight", "claim_text": claim},
+            headers=headers,
+        )
+        assert r.status_code == 201
+
+    def _card():
+        data = client.get("/api/feed", params={"card_type": "shake_guide"}).json()
+        matches = [c for c in data["cards"] if c["series_id"] == "labubu-macaron"]
+        assert len(matches) <= 1, "should update the same card in place, never duplicate"
+        return matches[0] if matches else None
+
+    _post("lm-vanilla", "45g")
+    _post("lm-pistachio", "44g")
+    assert _card() is None, "below SHAKE_GUIDE_CARD_THRESHOLD (3) -- no card yet"
+
+    _post("lm-vanilla", "faint rattle")
+    card = _card()
+    assert card is not None, "3rd contribution crosses the threshold"
+    assert "Labubu Macaron" in card["title"]
+    assert "3 community tells" in card["body"]
+
+    _post("lm-pistachio", "code ends in 7")
+    card = _card()
+    assert "4 community tells" in card["body"], "card updates in place on further contributions"

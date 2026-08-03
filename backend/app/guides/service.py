@@ -181,6 +181,41 @@ def vote_contribution(user_id: str, contribution_id: int, direction: str) -> dic
 # down-ranked.
 _ALLOWED_TECHNIQUES = {"weight", "sound", "box_code", "seam"}
 
+# SHAKE_GUIDES_DESIGN.md's Surfaces section: the 🎲 feed card "fires when a
+# guide for a newly-dropped series crosses a minimum contribution threshold,
+# or when an existing guide's summary meaningfully changes." Only the seed
+# data ever produced one of these cards -- real contributions never touched
+# feed_cards at all, same shape of gap Reviews had before iteration 26.
+# "Meaningfully changes" is defined here as "the contribution count changed,
+# once already past the threshold" -- the honest subset of that rule
+# buildable without the AI-generated technique_summary the doc describes;
+# a real count changing is a genuine signal, just not an AI-judged one.
+SHAKE_GUIDE_CARD_THRESHOLD = 3
+
+
+def _maybe_update_guide_card(conn, guide_id: str, series_id: str) -> None:
+    contrib_count = conn.execute(
+        "SELECT COUNT(*) AS n FROM guide_contributions WHERE guide_id = ?", (guide_id,)
+    ).fetchone()["n"]
+    if contrib_count < SHAKE_GUIDE_CARD_THRESHOLD:
+        return
+
+    series = conn.execute("SELECT name FROM series WHERE id = ?", (series_id,)).fetchone()
+    if not series:
+        return
+
+    card_id = f"guide-card:{series_id}"
+    now = int(time.time())
+    title = f"Shake Guide updated for {series['name']}"
+    body = f"{contrib_count} community tells now recorded for {series['name']} — check the figure signatures."
+    conn.execute(
+        "INSERT INTO feed_cards "
+        "(id, card_type, series_id, title, body, source_trust_tier, region, created_at) "
+        "VALUES (?, 'shake_guide', ?, ?, ?, 'community', 'Global', ?) "
+        "ON CONFLICT(id) DO UPDATE SET title = excluded.title, body = excluded.body, created_at = excluded.created_at",
+        (card_id, series_id, title, body, now),
+    )
+
 
 def add_contribution(
     series_id: str,
@@ -216,6 +251,8 @@ def add_contribution(
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (guide_id, figure_id, technique_type, claim_text, weight_range_g, video_url, user_id, now),
         )
+        conn.commit()
+        _maybe_update_guide_card(conn, guide_id, series_id)
         conn.commit()
         return {"id": cur.lastrowid, "guide_id": guide_id, "created_at": now}
     finally:
