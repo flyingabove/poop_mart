@@ -726,6 +726,20 @@ async function openUserProfile(userId) {
         .join("")
     : `<div class="sig-detail">No posts yet.</div>`;
 
+  const reviewsHtml = profile.reviews.length
+    ? profile.reviews
+        .map(
+          (rv) => `
+      <div class="list-item" data-figure-id="${rv.figure_id}">
+        <div class="list-item-main">
+          <div class="list-item-name">${rv.figure_name}</div>
+          <div class="list-item-sub">${starsHtml(rv.rating)}${rv.text ? " · " + rv.text : ""}</div>
+        </div>
+      </div>`
+        )
+        .join("")
+    : `<div class="sig-detail">No reviews yet.</div>`;
+
   const followBtnHtml = isSelf
     ? ""
     : isLoggedIn()
@@ -750,6 +764,10 @@ async function openUserProfile(userId) {
     <div class="guide-box">
       <div class="section-title">Pulls &amp; Posts (${profile.posts.length})</div>
       ${postsHtml}
+    </div>
+    <div class="guide-box">
+      <div class="section-title">Reviews (${profile.reviews.length})</div>
+      ${reviewsHtml}
     </div>
   `);
 

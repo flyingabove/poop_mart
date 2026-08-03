@@ -27,6 +27,7 @@ def test_profile_shape_for_fresh_user(client):
     assert data["viewer_is_following"] is False
     assert data["rankings"] == []
     assert data["posts"] == []
+    assert data["reviews"] == []
 
 
 def test_profile_is_public_no_auth_required(client):
@@ -35,12 +36,17 @@ def test_profile_is_public_no_auth_required(client):
     assert r.status_code == 200
 
 
-def test_profile_shows_own_rankings_and_posts(client):
+def test_profile_shows_own_rankings_posts_and_reviews(client):
     user_id, headers = _signup(client, "profile-content@example.com")
     client.post("/api/rankings", json={"title": "Profile Ranking"}, headers=headers)
     client.post(
         "/api/feed/posts",
         json={"figure_id": "lfp-forest-ranger", "title": "Profile Post", "body": "look at this"},
+        headers=headers,
+    )
+    client.post(
+        "/api/figures/lfp-mushroom-nap/reviews",
+        json={"rating": 4, "text": "Solid figure"},
         headers=headers,
     )
 
@@ -49,6 +55,10 @@ def test_profile_shows_own_rankings_and_posts(client):
     post = next(p for p in data["posts"] if p["title"] == "Profile Post")
     assert post["figure_id"] == "lfp-forest-ranger"
     assert post["figure_name"] == "Forest Ranger"
+    review = next(r for r in data["reviews"] if r["figure_id"] == "lfp-mushroom-nap")
+    assert review["rating"] == 4
+    assert review["text"] == "Solid figure"
+    assert review["figure_name"] == "Mushroom Nap"
 
 
 def test_profile_follower_and_following_counts_update(client):

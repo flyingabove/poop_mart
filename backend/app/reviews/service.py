@@ -152,6 +152,20 @@ def vote_review(user_id: str, review_id: int, direction: str) -> dict:
         conn.close()
 
 
+def list_reviews_by_user(user_id: str, limit: int = 50) -> list[dict]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT r.id, r.figure_id, r.rating, r.text, r.created_at, f.name AS figure_name "
+            "FROM reviews r JOIN figures f ON f.id = r.figure_id "
+            "WHERE r.user_id = ? ORDER BY r.created_at DESC LIMIT ?",
+            (user_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
 def get_user_review(user_id: str, figure_id: str) -> dict | None:
     conn = get_connection()
     try:
