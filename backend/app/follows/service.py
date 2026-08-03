@@ -71,6 +71,17 @@ def followed_series_ids(user_id: str) -> set[str]:
         conn.close()
 
 
+def followed_user_ids(follower_id: str) -> set[str]:
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            "SELECT followed_id FROM user_follows WHERE follower_id = ?", (follower_id,)
+        ).fetchall()
+        return {r["followed_id"] for r in rows}
+    finally:
+        conn.close()
+
+
 def follow_user(follower_id: str, followed_id: str) -> dict:
     if follower_id == followed_id:
         raise FollowError("cannot follow yourself")

@@ -60,6 +60,7 @@ def list_feed(
     card_type: str | None = None,
     limit: int = 50,
     followed_series: set[str] | None = None,
+    followed_users: set[str] | None = None,
 ) -> list[dict]:
     conn = get_connection()
     try:
@@ -83,7 +84,7 @@ def list_feed(
         ).fetchall()
 
         now = int(time.time())
-        personalize = tab == "for_you" and followed_series
+        personalize = tab == "for_you" and bool(followed_series or followed_users)
         cards = []
         for r in rows:
             d = dict(r)
@@ -95,7 +96,14 @@ def list_feed(
             trust = _TRUST_WEIGHT.get(c["source_trust_tier"], 0.4)
             score = 0.6 * recency_decay + 0.25 * trust
             if personalize:
-                match = 1.0 if c["series_id"] in followed_series else 0.0
+                # personalization_match per FEED_SYSTEM_DESIGN.md covers both
+                # followed series AND followed creators -- a card matches if
+                # either its series or its poster is followed, not series
+                # alone (that gap meant following a creator with no series
+                # follows produced a fully unpersonalized feed).
+                series_match = bool(followed_series) and c["series_id"] in followed_series
+                creator_match = bool(followed_users) and c["poster_id"] in followed_users
+                match = 1.0 if (series_match or creator_match) else 0.0
                 score += 0.15 * match
                 c["followed"] = bool(match)
             c["_score"] = round(score, 4)

@@ -47,6 +47,39 @@ def test_for_you_is_personalized_after_following_a_series(client):
     assert any(c.get("followed") is False for c in data["cards"]), "unfollowed cards should still appear, just unboosted"
 
 
+def test_for_you_is_personalized_by_followed_creator_alone(client):
+    """personalization_match in FEED_SYSTEM_DESIGN.md covers followed
+    creators as well as followed series -- following only a person, with
+    zero series follows, should still personalize the feed and mark their
+    cards as followed."""
+    poster_signup = client.post(
+        "/api/auth/signup", json={"email": "feed-creator-poster@example.com", "password": "hunter2222"}
+    )
+    poster_id = poster_signup.json()["user_id"]
+    poster_headers = {"Authorization": f"Bearer {poster_signup.json()['access_token']}"}
+
+    follower_signup = client.post(
+        "/api/auth/signup", json={"email": "feed-creator-follower@example.com", "password": "hunter2222"}
+    )
+    follower_headers = {"Authorization": f"Bearer {follower_signup.json()['access_token']}"}
+
+    client.post(f"/api/follows/users/{poster_id}", headers=follower_headers)
+    post = client.post(
+        "/api/feed/posts",
+        json={"figure_id": "lfp-forest-ranger", "title": "Creator personalization test", "body": "hi"},
+        headers=poster_headers,
+    ).json()
+
+    r = client.get("/api/feed", params={"tab": "for_you"}, headers=follower_headers)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["personalized"] is True
+
+    mine = next(c for c in data["cards"] if c["id"] == post["id"])
+    assert mine["followed"] is True
+    assert any(c.get("followed") is False for c in data["cards"]), "unfollowed cards should still appear, just unboosted"
+
+
 def _auth_headers(client, email="poster1@example.com"):
     r = client.post("/api/auth/signup", json={"email": email, "password": "hunter2222"})
     return {"Authorization": f"Bearer {r.json()['access_token']}"}

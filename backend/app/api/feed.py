@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from typing import Optional
 from backend.app.auth.dependencies import get_current_user, get_optional_user
 from backend.app.feed import service as feed_service
-from backend.app.follows.service import followed_series_ids
+from backend.app.follows.service import followed_series_ids, followed_user_ids
 from backend.app.notifications.service import notify_followers_of_user_post
 
 router = APIRouter()
@@ -22,12 +22,19 @@ async def get_feed(
     limit: int = Query(50, ge=1, le=200),
     user: Optional[dict] = Depends(get_optional_user),
 ):
-    followed = followed_series_ids(user["id"]) if user else None
-    cards = feed_service.list_feed(tab=tab, card_type=card_type, limit=limit, followed_series=followed)
+    followed_series = followed_series_ids(user["id"]) if user else None
+    followed_creators = followed_user_ids(user["id"]) if user else None
+    cards = feed_service.list_feed(
+        tab=tab,
+        card_type=card_type,
+        limit=limit,
+        followed_series=followed_series,
+        followed_users=followed_creators,
+    )
     return {
         "tab": tab,
         "count": len(cards),
-        "personalized": bool(followed),
+        "personalized": bool(followed_series or followed_creators),
         "cards": cards,
     }
 
