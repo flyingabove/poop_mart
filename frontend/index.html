@@ -134,6 +134,67 @@
   .contrib-form button:hover { opacity: 0.9; }
   .form-note { font-size: 11.5px; color: var(--good); margin-top: 8px; display: none; }
   .form-note.show { display: block; }
+
+  /* ---------------- Auth area / bell ---------------- */
+  #auth-area { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+  #auth-area button {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  #auth-area button:hover { background: var(--card-hover); }
+  #user-email { font-size: 12.5px; color: var(--text-sub); max-width: 130px; overflow: hidden; text-overflow: ellipsis; }
+
+  #bell-wrap { position: relative; }
+  #bell-btn { background: none !important; border: none !important; font-size: 18px; padding: 4px !important; position: relative; }
+  #bell-badge {
+    position: absolute; top: -2px; right: -2px; background: var(--accent); color: #1a0a12;
+    font-size: 10px; font-weight: 800; border-radius: 999px; min-width: 15px; height: 15px;
+    display: none; align-items: center; justify-content: center; padding: 0 3px;
+  }
+  #notif-dropdown {
+    position: absolute; top: 38px; right: 0; width: 300px; max-height: 360px; overflow-y: auto;
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    z-index: 30; display: none;
+  }
+  #notif-dropdown.open { display: block; }
+  .notif-item { padding: 10px 12px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 13px; }
+  .notif-item:last-child { border-bottom: none; }
+  .notif-item:hover { background: var(--card-hover); }
+  .notif-item.unread { background: rgba(255,93,162,0.08); }
+  .notif-item .notif-title { font-weight: 700; margin-bottom: 2px; }
+  .notif-item .notif-time { color: var(--text-muted); font-size: 11px; margin-top: 4px; }
+  .notif-empty { padding: 16px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+  /* ---------------- Auth modal ---------------- */
+  #auth-modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 50; display: none;
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  #auth-modal-backdrop.open { display: flex; }
+  #auth-modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; width: 100%; max-width: 340px; }
+  #auth-modal h2 { font-size: 18px; margin-bottom: 4px; }
+  #auth-modal .sub { color: var(--text-sub); font-size: 12.5px; margin-bottom: 16px; }
+  #auth-modal label { display: block; font-size: 12px; color: var(--text-sub); margin: 10px 0 4px; }
+  #auth-modal input {
+    width: 100%; background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: var(--radius-sm); padding: 9px 12px; font-size: 14px; font-family: var(--font);
+  }
+  #auth-modal button[type="submit"] {
+    width: 100%; margin-top: 16px; background: var(--accent); color: #1a0a12; border: none;
+    font-weight: 700; padding: 10px; border-radius: 999px; cursor: pointer; font-size: 14px;
+  }
+  #auth-error { color: var(--bad); font-size: 12.5px; margin-top: 10px; display: none; }
+  #auth-error.show { display: block; }
+  #auth-toggle { text-align: center; margin-top: 14px; font-size: 12.5px; color: var(--text-sub); cursor: pointer; }
+  #auth-toggle span { color: var(--accent); font-weight: 700; }
+  #auth-modal-close { float: right; cursor: pointer; color: var(--text-muted); font-size: 18px; line-height: 1; }
+
+  .follow-btn {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    border-radius: 999px; padding: 6px 14px; font-size: 12.5px; font-weight: 700; cursor: pointer; flex: none;
+  }
+  .follow-btn.following { background: var(--accent-dim); border-color: var(--accent); color: #fff; }
+  .card-followed-tag { color: var(--accent); border-color: var(--accent); font-weight: 800; }
 </style>
 </head>
 <body>
@@ -144,7 +205,25 @@
     <input id="search" type="search" placeholder="Search Labubu, Crybaby, Skullpanda…" autocomplete="off" />
     <div id="search-results"></div>
   </div>
+  <div id="auth-area"></div>
 </header>
+
+<div id="auth-modal-backdrop">
+  <div id="auth-modal">
+    <span id="auth-modal-close">&times;</span>
+    <h2 id="auth-modal-title">Sign in</h2>
+    <div class="sub">Follow series, get notified, build your collection.</div>
+    <form id="auth-form">
+      <label>Email</label>
+      <input type="email" name="email" required autocomplete="email" />
+      <label>Password</label>
+      <input type="password" name="password" required minlength="8" autocomplete="current-password" />
+      <button type="submit">Sign in</button>
+      <div id="auth-error"></div>
+    </form>
+    <div id="auth-toggle">Don't have an account? <span>Create one</span></div>
+  </div>
+</div>
 
 <div id="tabs"></div>
 
@@ -183,6 +262,38 @@ const CARD_LABEL = {
   regional_news: "Regional News", shake_guide: "Shake Guide",
 };
 
+/* ---------------- Auth state ---------------- */
+const AUTH = {
+  token: localStorage.getItem("poopmart_token") || null,
+  email: localStorage.getItem("poopmart_email") || null,
+};
+
+function isLoggedIn() { return !!AUTH.token; }
+
+function apiFetch(url, opts = {}) {
+  const headers = Object.assign({}, opts.headers || {});
+  if (AUTH.token) headers["Authorization"] = `Bearer ${AUTH.token}`;
+  return fetch(url, Object.assign({}, opts, { headers }));
+}
+
+function setAuth(token, email) {
+  AUTH.token = token;
+  AUTH.email = email;
+  localStorage.setItem("poopmart_token", token);
+  localStorage.setItem("poopmart_email", email);
+  renderAuthArea();
+  loadFeed();
+}
+
+function clearAuth() {
+  AUTH.token = null;
+  AUTH.email = null;
+  localStorage.removeItem("poopmart_token");
+  localStorage.removeItem("poopmart_email");
+  renderAuthArea();
+  loadFeed();
+}
+
 let currentTab = "for_you";
 
 const feedScreen = document.getElementById("feed-screen");
@@ -190,6 +301,128 @@ const detailScreen = document.getElementById("detail");
 const feedEl = document.getElementById("feed");
 const emptyEl = document.getElementById("empty");
 const tabsEl = document.getElementById("tabs");
+const authAreaEl = document.getElementById("auth-area");
+
+/* ---------------- Auth area (header) ---------------- */
+
+function renderAuthArea() {
+  if (!isLoggedIn()) {
+    authAreaEl.innerHTML = `<button id="sign-in-btn">Sign in</button>`;
+    document.getElementById("sign-in-btn").addEventListener("click", () => openAuthModal("login"));
+    return;
+  }
+  authAreaEl.innerHTML = `
+    <div id="bell-wrap">
+      <button id="bell-btn">🔔<span id="bell-badge">0</span></button>
+      <div id="notif-dropdown"></div>
+    </div>
+    <span id="user-email">${AUTH.email}</span>
+    <button id="sign-out-btn">Sign out</button>
+  `;
+  document.getElementById("sign-out-btn").addEventListener("click", clearAuth);
+  document.getElementById("bell-btn").addEventListener("click", toggleNotifDropdown);
+  refreshNotifications();
+}
+
+/* ---------------- Notifications ---------------- */
+
+let notifCache = { unread_count: 0, notifications: [] };
+
+async function refreshNotifications() {
+  if (!isLoggedIn()) return;
+  const res = await apiFetch("/api/notifications");
+  if (!res.ok) return;
+  notifCache = await res.json();
+  const badge = document.getElementById("bell-badge");
+  if (!badge) return;
+  if (notifCache.unread_count > 0) {
+    badge.style.display = "flex";
+    badge.textContent = notifCache.unread_count > 9 ? "9+" : notifCache.unread_count;
+  } else {
+    badge.style.display = "none";
+  }
+}
+
+function notifItemHtml(n) {
+  return `<div class="notif-item ${n.read_at ? "" : "unread"}" data-id="${n.id}">
+    <div class="notif-title">${n.title}</div>
+    <div>${n.body || ""}</div>
+    <div class="notif-time">${timeAgo(n.created_at)}</div>
+  </div>`;
+}
+
+function toggleNotifDropdown() {
+  const dd = document.getElementById("notif-dropdown");
+  if (!dd) return;
+  const opening = !dd.classList.contains("open");
+  dd.classList.toggle("open");
+  if (!opening) return;
+  dd.innerHTML = notifCache.notifications.length
+    ? notifCache.notifications.map(notifItemHtml).join("")
+    : `<div class="notif-empty">No notifications yet — follow a series to get updates.</div>`;
+  dd.querySelectorAll(".notif-item").forEach((el) =>
+    el.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      await apiFetch(`/api/notifications/${el.dataset.id}/read`, { method: "POST" });
+      el.classList.remove("unread");
+      refreshNotifications();
+    })
+  );
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#bell-wrap")) {
+    const dd = document.getElementById("notif-dropdown");
+    if (dd) dd.classList.remove("open");
+  }
+});
+
+/* ---------------- Auth modal ---------------- */
+
+let authMode = "login";
+const authBackdrop = document.getElementById("auth-modal-backdrop");
+const authForm = document.getElementById("auth-form");
+const authError = document.getElementById("auth-error");
+
+function openAuthModal(mode) {
+  authMode = mode;
+  document.getElementById("auth-modal-title").textContent = mode === "login" ? "Sign in" : "Create account";
+  authForm.querySelector('button[type="submit"]').textContent = mode === "login" ? "Sign in" : "Create account";
+  document.getElementById("auth-toggle").innerHTML =
+    mode === "login"
+      ? `Don't have an account? <span>Create one</span>`
+      : `Already have an account? <span>Sign in</span>`;
+  authError.classList.remove("show");
+  authForm.reset();
+  authBackdrop.classList.add("open");
+}
+
+document.getElementById("auth-modal-close").addEventListener("click", () => authBackdrop.classList.remove("open"));
+authBackdrop.addEventListener("click", (e) => {
+  if (e.target === authBackdrop) authBackdrop.classList.remove("open");
+});
+document.getElementById("auth-toggle").addEventListener("click", () => openAuthModal(authMode === "login" ? "signup" : "login"));
+
+authForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const fd = new FormData(authForm);
+  const email = fd.get("email");
+  const password = fd.get("password");
+  const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/signup";
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    authError.textContent = data.detail || "Something went wrong.";
+    authError.classList.add("show");
+    return;
+  }
+  setAuth(data.access_token, data.email);
+  authBackdrop.classList.remove("open");
+});
 
 function renderTabs() {
   tabsEl.innerHTML = TABS.map(
@@ -227,6 +460,7 @@ function cardHtml(card) {
   }
   meta.push(`<span class="chip trust-${card.source_trust_tier}">${card.source_trust_tier.replace("_", " ")}</span>`);
   meta.push(`<span class="chip">${timeAgo(card.created_at)}</span>`);
+  if (card.followed) meta.push(`<span class="chip card-followed-tag">★ Following</span>`);
 
   return `
     <div class="card" data-figure-id="${card.figure_id || ""}" data-series-id="${card.series_id || ""}">
@@ -239,7 +473,7 @@ function cardHtml(card) {
 
 async function loadFeed() {
   feedEl.innerHTML = "";
-  const res = await fetch(`/api/feed?tab=${currentTab}`);
+  const res = await apiFetch(`/api/feed?tab=${currentTab}`);
   const data = await res.json();
   emptyEl.style.display = data.cards.length ? "none" : "block";
   feedEl.innerHTML = data.cards.map(cardHtml).join("");
@@ -347,10 +581,27 @@ async function openSeries(seriesId) {
         .join("")
     : `<div class="sig-detail">Not enough data yet — be the first to add a tell below.</div>`;
 
+  let isFollowing = false;
+  if (isLoggedIn()) {
+    const followsRes = await apiFetch("/api/follows/series");
+    if (followsRes.ok) {
+      const followsData = await followsRes.json();
+      isFollowing = followsData.series.some((s) => s.series_id === seriesId);
+    }
+  }
+  const followBtnHtml = isLoggedIn()
+    ? `<button class="follow-btn ${isFollowing ? "following" : ""}" id="follow-btn">${isFollowing ? "✓ Following" : "+ Follow"}</button>`
+    : `<button class="follow-btn" id="follow-btn">Sign in to follow</button>`;
+
   showDetail(`
     <div class="detail-header">
-      <h1>${seriesData.series.name}</h1>
-      <div class="sub">${seriesData.series.brand_line} · ${seriesData.figures.length} figures</div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+        <div>
+          <h1>${seriesData.series.name}</h1>
+          <div class="sub">${seriesData.series.brand_line} · ${seriesData.figures.length} figures</div>
+        </div>
+        ${followBtnHtml}
+      </div>
     </div>
 
     <div class="guide-box">
@@ -398,6 +649,16 @@ async function openSeries(seriesId) {
       document.getElementById("contrib-note").classList.add("show");
       setTimeout(() => openSeries(seriesId), 700);
     }
+  });
+
+  document.getElementById("follow-btn").addEventListener("click", async () => {
+    if (!isLoggedIn()) {
+      openAuthModal("login");
+      return;
+    }
+    const method = isFollowing ? "DELETE" : "POST";
+    const res = await apiFetch(`/api/follows/series/${seriesId}`, { method });
+    if (res.ok) openSeries(seriesId);
   });
 }
 
@@ -449,6 +710,7 @@ document.addEventListener("click", (e) => {
 
 /* ---------------- Init ---------------- */
 renderTabs();
+renderAuthArea();
 loadFeed();
 </script>
 </body>
