@@ -96,6 +96,29 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash   TEXT NOT NULL,
     created_at      INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS collection_items (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id         TEXT NOT NULL REFERENCES users(id),
+    figure_id       TEXT NOT NULL REFERENCES figures(id),
+    condition       TEXT,
+    photo_url       TEXT,
+    acquired_at     INTEGER NOT NULL,
+    UNIQUE(user_id, figure_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_collection_user ON collection_items(user_id);
+
+CREATE TABLE IF NOT EXISTS wishlist_items (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             TEXT NOT NULL REFERENCES users(id),
+    figure_id           TEXT NOT NULL REFERENCES figures(id),
+    alert_threshold     REAL,
+    created_at          INTEGER NOT NULL,
+    UNIQUE(user_id, figure_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wishlist_user ON wishlist_items(user_id);
 """
 
 
