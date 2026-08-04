@@ -13,6 +13,7 @@ from backend.app.db.database import init_db
 from backend.app.db.seed import seed_if_empty
 from backend.app.ingestion.news import run_ingestion_loop, DEFAULT_INTERVAL_SECONDS
 from backend.app.ingestion.youtube import run_youtube_ingestion_loop, DEFAULT_INTERVAL_SECONDS as YOUTUBE_DEFAULT_INTERVAL_SECONDS
+from backend.app.ingestion.instagram import run_instagram_ingestion_loop, DEFAULT_INTERVAL_SECONDS as INSTAGRAM_DEFAULT_INTERVAL_SECONDS
 
 from backend.app.api.health import router as health_router
 from backend.app.api.feed import router as feed_router
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
 
     ingestion_task = None
     youtube_task = None
+    instagram_task = None
     if os.getenv("DISABLE_INGESTION") != "1":
         interval = int(os.getenv("INGEST_INTERVAL_SECONDS", str(DEFAULT_INTERVAL_SECONDS)))
         ingestion_task = asyncio.create_task(run_ingestion_loop(interval))
@@ -50,12 +52,20 @@ async def lifespan(app: FastAPI):
             )
             youtube_task = asyncio.create_task(run_youtube_ingestion_loop(youtube_interval))
 
+        if os.getenv("INSTAGRAM_ACCESS_TOKEN") and os.getenv("INSTAGRAM_BUSINESS_ACCOUNT_ID"):
+            instagram_interval = int(
+                os.getenv("INSTAGRAM_INGEST_INTERVAL_SECONDS", str(INSTAGRAM_DEFAULT_INTERVAL_SECONDS))
+            )
+            instagram_task = asyncio.create_task(run_instagram_ingestion_loop(instagram_interval))
+
     yield
 
     if ingestion_task:
         ingestion_task.cancel()
     if youtube_task:
         youtube_task.cancel()
+    if instagram_task:
+        instagram_task.cancel()
 
 
 app = FastAPI(title=APP_TITLE, version=APP_VERSION, lifespan=lifespan)

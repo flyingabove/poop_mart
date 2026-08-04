@@ -104,10 +104,12 @@ railway logs
 | Variable | Purpose | Required? |
 |----------|---------|------------|
 | `DATABASE_URL` / SQLite fallback | Not set → uses `/data/poop_mart.db` (Railway volume) or `./data/poop_mart.db` locally. | No |
-| `DISABLE_INGESTION` | Set to `1` to skip starting the background Google News (and YouTube, if configured) ingestion loops (tests always set this — see `tests/conftest.py`). Leave unset in production so the feed keeps getting new material. | No |
+| `DISABLE_INGESTION` | Set to `1` to skip starting the background Google News (and YouTube/Instagram, if configured) ingestion loops (tests always set this — see `tests/conftest.py`). Leave unset in production so the feed keeps getting new material. | No |
 | `INGEST_INTERVAL_SECONDS` | Override the Google News ingestion poll interval (default 600s). | No |
 | `YOUTUBE_API_KEY` | YouTube Data API v3 key (free tier, no OAuth). Without it, `backend/app/ingestion/youtube.py`'s loop never starts — no fake data, it just doesn't run. Get one via Google Cloud Console: new project → enable "YouTube Data API v3" → Credentials → Create Credentials → API Key. | No (yet) |
 | `YOUTUBE_INGEST_INTERVAL_SECONDS` | Override the YouTube ingestion poll interval (default 7200s / 2h — kept long to stay inside the free 10,000-unit/day quota; see the module docstring for the math). | No |
+| `INSTAGRAM_ACCESS_TOKEN` / `INSTAGRAM_BUSINESS_ACCOUNT_ID` | Instagram Graph API long-lived token + our linked IG Business account's user ID. Without both, `backend/app/ingestion/instagram.py`'s loop never starts. Needs a real Instagram Business account, a linked Facebook Page, a Meta Developer app, Business Verification, and App Review for "Instagram Public Content Access" (days-to-weeks, not guaranteed) — see the module docstring for the exact endpoints once you have a token. | No (yet) |
+| `INSTAGRAM_INGEST_INTERVAL_SECONDS` | Override the Instagram ingestion poll interval (default 7200s / 2h). | No |
 | `OPENAI_API_KEY` | Only needed once `backend/app/ai/` is wired to a real model — unused by the current seeded-data MVP. | No (yet) |
 | `JWT_SECRET` | Real auth (`backend/app/auth/`) is live; a random per-process fallback is used if unset, which is fine for local dev/tests but won't survive a restart in production — set a real persistent value on both Railway services. | Recommended |
 
@@ -115,7 +117,11 @@ railway logs
 
 `backend/app/ingestion/news.py` polls Google News RSS in a background task (started in `main.py`'s lifespan, immediately on startup and then every `INGEST_INTERVAL_SECONDS`) and inserts new Pop Mart articles as `regional_news` feed cards — this is what keeps the feed populated with new material without a redeploy. See [`documentation/model_output_docs/TREND_DETECTION_DESIGN.md`](documentation/model_output_docs/TREND_DETECTION_DESIGN.md) for why Google News RSS was chosen over Reddit (Reddit's public JSON endpoint hard-blocks datacenter IPs).
 
-`backend/app/ingestion/youtube.py` is a second real connector (also started in `main.py`'s lifespan, only if `YOUTUBE_API_KEY` is set): it polls Pop Mart's official YouTube channel (`@POPMARTOFFICIAL`, tagged `official` trust tier) plus a handful of unboxing/box-opening/new-release search queries (tagged `community` trust tier), inserting new videos as `video` feed cards.
+`backend/app/ingestion/youtube.py` is a second real connector (also started in `main.py`'s lifespan, only if `YOUTUBE_API_KEY` is set): it polls Pop Mart's official YouTube channel (`@POPMARTOFFICIAL`, tagged `official` trust tier) plus a handful of unboxing/box-opening/new-release search queries (tagged `community` trust tier), inserting new videos as `video` feed cards. Verified against the live API before shipping.
+
+`backend/app/ingestion/instagram.py` is a third connector, real code but **not yet exercised against the live Instagram Graph API** (no token was available at build time — see the module docstring). Same official/community split: Business Discovery on `@popmart` for official-tier posts, a small fixed hashtag list for community-tier posts. Smoke-test carefully the first time `INSTAGRAM_ACCESS_TOKEN` is actually set.
+
+X/Twitter, TikTok, Xiaohongshu, and Weibo remain deliberately unbuilt — X killed its free API tier on 2026-02-06 (now pay-per-use, $0.005/read, no free option); TikTok has no general public search/discovery API; Xiaohongshu and Weibo are enterprise-partnership-only with no self-serve foreign-developer access. Scraping around any of these is a deliberate non-goal, not an oversight — it would violate each platform's ToS and is fragile by design (same reasoning already applied to Reddit above).
 
 Keep this table in sync with reality — if a module in `ingestion/`, `ai/`, or `auth/` starts making real external calls, add its required env vars here **and** to `.env.example` before merging.
 

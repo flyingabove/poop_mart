@@ -217,6 +217,17 @@ CREATE TABLE IF NOT EXISTS notification_preferences (
     enabled         INTEGER NOT NULL DEFAULT 1,
     UNIQUE(user_id, category)
 );
+
+-- Instagram's ig_hashtag_search endpoint is capped at 30 unique hashtag
+-- lookups per rolling 7-day window per IG business account -- persisted
+-- (not just in-memory) so redeploys don't silently re-burn the quota
+-- re-resolving the same hashtags every restart. See
+-- backend/app/ingestion/instagram.py.
+CREATE TABLE IF NOT EXISTS instagram_hashtag_cache (
+    hashtag         TEXT PRIMARY KEY,
+    hashtag_id      TEXT NOT NULL,
+    resolved_at     INTEGER NOT NULL
+);
 """
 
 
