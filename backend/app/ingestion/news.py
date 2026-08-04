@@ -27,6 +27,7 @@ from xml.etree import ElementTree
 import httpx
 
 from backend.app.db.database import get_connection
+from backend.app.ingestion.common import load_catalog, resolve_title
 from backend.app.notifications.service import notify_followers_of_new_card
 
 _log = logging.getLogger(__name__)
@@ -94,29 +95,13 @@ def _parse_items(xml_text: str) -> list[dict]:
 
 
 def _load_catalog(conn) -> tuple[list[dict], list[dict]]:
-    series = [dict(r) for r in conn.execute("SELECT id, name, aliases FROM series")]
-    figures = [dict(r) for r in conn.execute("SELECT id, name, series_id FROM figures")]
-    return series, figures
+    return load_catalog(conn)
 
 
 def _resolve(title: str, series: list[dict], figures: list[dict]) -> tuple[str | None, str | None]:
-    """Best-effort match a headline to a known figure/series by substring —
-    the same alias-table resolution approach described in
-    TREND_DETECTION_DESIGN.md, just without a real NLP layer yet.
-
-    Leaves both None rather than guessing when nothing matches: an unlinked
-    news card still renders fine in the feed, a wrongly-linked one actively
-    misleads whoever reads it on a figure's page.
-    """
-    t = title.lower()
-    for fig in figures:
-        if fig["name"].lower() in t:
-            return fig["id"], fig["series_id"]
-    for s in series:
-        aliases = [a.strip().lower() for a in (s["aliases"] or "").split(",") if a.strip()]
-        if any(name in t for name in [s["name"].lower(), *aliases]):
-            return None, s["id"]
-    return None, None
+    """Thin wrapper kept for this module's existing call sites/tests --
+    real logic now lives in ingestion/common.py, shared with youtube.py."""
+    return resolve_title(title, series, figures)
 
 
 async def ingest_google_news() -> int:

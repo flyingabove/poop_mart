@@ -27,6 +27,13 @@ _TRUST_WEIGHT = {
     "unverified": 0.1,
 }
 
+# For You is explicitly meant to lean video-heavy now that YouTube
+# ingestion is real (backend/app/ingestion/youtube.py) -- a flat boost
+# on top of the normal recency/trust/personalization score, not a hard
+# filter, so it reads as "a mix of stuff, mostly videos" rather than
+# videos-only (that's what the dedicated Videos tab is for).
+_FOR_YOU_VIDEO_BOOST = 0.3
+
 _TAB_CARD_TYPES = {
     "trending": {"trending", "whats_hot", "price_change"},
     "news": {"new_drop", "regional_news"},
@@ -105,6 +112,8 @@ def list_feed(
             recency_decay = 1 / (1 + age_hours / 24)
             trust = _TRUST_WEIGHT.get(c["source_trust_tier"], 0.4)
             score = 0.6 * recency_decay + 0.25 * trust
+            if tab == "for_you" and c["card_type"] == "video":
+                score += _FOR_YOU_VIDEO_BOOST
             if personalize:
                 # personalization_match per FEED_SYSTEM_DESIGN.md covers both
                 # followed series AND followed creators -- a card matches if
